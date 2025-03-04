@@ -3,11 +3,12 @@ var router = express.Router();
 
 const clickhouse = require('../config/clickhouse');
 const pool = require('../config/postgis');
+const moment = require("moment-timezone");
 
 const insertIntoPostGIS = async (catalogData) => {
     const insertQuery = `
         MERGE INTO data_catalog AS target
-        USING (SELECT $1 AS table_name, $2 AS source_type, $3::DATE AS partition_date, 
+        USING (SELECT $1 AS table_name, $2 AS source_type, $3::TIMESTAMP WITH TIME ZONE AS partition_date, 
                     $4::JSONB AS columns_info, ST_GeogFromText($5) AS spatial_extent,
                     $6::INTEGER AS record_count, $7::TIMESTAMP WITH TIME ZONE AS created_at, $8::TIMESTAMP WITH TIME ZONE AS updated_at) AS source
         ON target.source_type = source.source_type 
@@ -31,8 +32,8 @@ const insertIntoPostGIS = async (catalogData) => {
             JSON.stringify(item.columns_info),
             item.spatialExtent,
             item.record_count,
-            item.created_at,
-            item.updated_at
+            moment().tz("Asia/Jakarta").format("YYYY-MM-DD HH:mm:ssZ"),
+            moment().tz("Asia/Jakarta").format("YYYY-MM-DD HH:mm:ssZ")
         ]);
     }
 };
@@ -70,6 +71,9 @@ const processDatabase = async (database) => {
             const geomData = await geomResult.json();
             const geoms = geomData.data.map(row => row.geom);
 
+            const partitionDateStr = tableName.split("_")[1];
+            const partitionDate = moment(partitionDateStr, "YYYYMMDD").tz("Asia/Jakarta").format("YYYY-MM-DD HH:mm:ssZ");
+
             for (const geom of geoms) {
                 const countResult = await clickhouse.query({
                     query: `SELECT COUNT(*) AS record_count FROM ${database}.${tableName} WHERE geom = tuple(${geom[0]}, ${geom[1]})`,
@@ -81,16 +85,16 @@ const processDatabase = async (database) => {
                 catalogData.push({
                     table_name: tableName,
                     source_type: tableName.split("_")[0],
-                    partition_date: `${tableName.split("_")[1]}`,
+                    partition_date: partitionDate,
                     columns_info: columnsInfo,
                     spatialExtent: `POINT(${geom[0]} ${geom[1]})`,
                     record_count: recordCount,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
+                    created_at: moment().tz("Asia/Jakarta").format("YYYY-MM-DD HH:mm:ssZ"),
+                    updated_at: moment().tz("Asia/Jakarta").format("YYYY-MM-DD HH:mm:ssZ")
                 });
             }
         }
-        
+
         await insertIntoPostGIS(catalogData);
 
         return { success: true, message: `${database} data catalog updated in PostGIS` };
