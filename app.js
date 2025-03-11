@@ -3,6 +3,7 @@ var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
+var cors = require('cors');
 
 var authRouter = require('./routes/auth');
 var indexRouter = require('./routes/index');
@@ -10,6 +11,15 @@ var catalogRouter = require('./routes/catalog');
 var retrieveRouter = require('./routes/retrieve');
 
 var app = express();
+
+// ==== CORS Setup ====
+// Allow credentials (cookies), specific origins, and headers
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:3000', // replace with your frontend URL
+  credentials: true, // allow cookies to be sent
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
