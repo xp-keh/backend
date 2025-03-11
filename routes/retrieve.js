@@ -132,4 +132,21 @@ router.get("/download", async (req, res) => {
   }
 });
 
+router.get("/cities", async (req, res) => {
+  try {
+    const cityQuery = `
+      SELECT city, longitude, latitude
+      FROM cities
+      ORDER BY city ASC;
+    `;
+
+    const { rows: cities } = await pool.query(cityQuery);
+
+    res.json({ cities });
+  } catch (error) {
+    console.error("Error fetching cities:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 module.exports = router;
