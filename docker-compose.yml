@@ -10,7 +10,7 @@ services:
     command: npm start
     networks:
       data-station-network:
-        ipv4_address: 172.20.14.90
+        ipv4_address: 172.20.14.91
 
 networks:
   data-station-network:
