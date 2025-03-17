@@ -3,8 +3,6 @@ services:
     build: .
     ports:
       - "4000:3000"
-    env_file:
-      - .env
     command: npm start
     networks:
       data-station-network:
