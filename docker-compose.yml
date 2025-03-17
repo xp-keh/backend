@@ -5,8 +5,6 @@ services:
       - "4000:3000"
     environment:
       NODE_ENV: production
-    volumes:
-      - .:/usr/src/app
     command: npm start
     networks:
       data-station-network:
