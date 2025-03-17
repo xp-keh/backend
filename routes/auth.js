@@ -1,5 +1,5 @@
 const express = require('express');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/postgis'); // Ensure your PostgreSQL pool is properly configured
 const { body, validationResult } = require('express-validator');
