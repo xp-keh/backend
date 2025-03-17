@@ -10,4 +10,10 @@ services:
     volumes:
       - .:/usr/src/app
     command: npm start
-    
+    networks:
+      data-station-network:
+        ipv4_address: 172.20.14.90
+
+networks:
+  data-station-network:
+    external: true
