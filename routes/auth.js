@@ -24,6 +24,11 @@ router.post('/register', [
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
     body('name').trim().notEmpty().escape()
 ], async (req, res) => {
+    console.log("CLIENT_URL:", process.env.CLIENT_URL);
+    console.log("JWT_SECRET:", process.env.JWT_SECRET);
+    console.log("REFRESH_SECRET:", process.env.REFRESH_SECRET);
+    console.log("NODE_ENV:", process.env.NODE_ENV);
+    console.log("DATABASE_URL:", process.env.DATABASE_URL);
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
