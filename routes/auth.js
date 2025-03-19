@@ -17,20 +17,6 @@ const loginLimiter = rateLimit({
     headers: true,
 });
 
-router.get('/env', async (req, res) => {
-    try {
-        res.json({
-            JWT_SECRET: process.env.JWT_SECRET || "Not Set",
-            REFRESH_SECRET: process.env.REFRESH_SECRET || "Not Set",
-            NODE_ENV: process.env.NODE_ENV || "Not Set",
-            DATABASE_URL: process.env.DATABASE_URL || "Not Set",
-            CLIENT_URL: process.env.CLIENT_URL || "Not Set"
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Env failed', error: error.message });
-    }
-});
-
 // ** Register a new user **
 router.post('/register', [
     body('username').trim().isLength({ min: 3 }).escape(),
