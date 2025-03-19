@@ -4,6 +4,8 @@ services:
     ports:
       - "4000:3000"
     command: npm start
+    env_file:
+      - .env
     networks:
       data-station-network:
         ipv4_address: 172.20.14.91
