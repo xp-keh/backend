@@ -17,6 +17,16 @@ const loginLimiter = rateLimit({
     headers: true,
 });
 
+router.get('/check-env', (req, res) => {
+    res.json({
+        JWT_SECRET: process.env.JWT_SECRET || "Not Set",
+        REFRESH_SECRET: process.env.REFRESH_SECRET || "Not Set",
+        NODE_ENV: process.env.NODE_ENV || "Not Set",
+        DATABASE_URL: process.env.DATABASE_URL || "Not Set",
+        CLIENT_URL: process.env.CLIENT_URL || "Not Set"
+    });
+});
+
 // ** Register a new user **
 router.post('/register', [
     body('username').trim().isLength({ min: 3 }).escape(),
@@ -24,11 +34,6 @@ router.post('/register', [
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
     body('name').trim().notEmpty().escape()
 ], async (req, res) => {
-    console.log("CLIENT_URL:", process.env.CLIENT_URL);
-    console.log("JWT_SECRET:", process.env.JWT_SECRET);
-    console.log("REFRESH_SECRET:", process.env.REFRESH_SECRET);
-    console.log("NODE_ENV:", process.env.NODE_ENV);
-    console.log("DATABASE_URL:", process.env.DATABASE_URL);
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
