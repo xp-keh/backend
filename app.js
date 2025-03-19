@@ -1,5 +1,11 @@
 require('dotenv').config();
 
+console.log("CLIENT_URL:", process.env.CLIENT_URL);
+console.log("JWT_SECRET:", process.env.JWT_SECRET);
+console.log("REFRESH_SECRET:", process.env.REFRESH_SECRET);
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("DATABASE_URL:", process.env.DATABASE_URL);
+
 var createError = require('http-errors');
 var express = require('express');
 var path = require('path');

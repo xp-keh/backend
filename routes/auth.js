@@ -30,7 +30,6 @@ router.post('/register', [
     const { username, password, name, email } = req.body;
 
     try {
-        console.log(process.env.POSTGRES_HOST);
         const userCheck = await pool.query('SELECT * FROM users WHERE username = $1 OR email = $2', [username, email]);
         if (userCheck.rows.length > 0) {
             return res.status(400).json({ error: 'Username or email already exists' });
