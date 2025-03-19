@@ -4,20 +4,20 @@ FROM node:18
 # Set working directory
 WORKDIR /usr/src/app
 
-# Copy only package.json and package-lock.json first (better caching)
+# Copy package.json and package-lock.json first for better caching
 COPY package*.json ./
 
-# Install app dependencies
+# Install dependencies
 RUN npm install
 
 # Copy the rest of the application source code
 COPY . .
 
-# Ensure node_modules is accessible when using volumes
-RUN chmod -R 777 /usr/src/app/node_modules
-
 # Expose the correct port
 EXPOSE 4000
+
+# Fix permission issues (optional)
+RUN chmod -R 777 /usr/src/app/node_modules
 
 # Command to run your app
 CMD ["npm", "start"]
