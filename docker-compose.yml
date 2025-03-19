@@ -9,7 +9,7 @@ services:
     volumes:
       - backend-storage:/usr/src/app/data  # Persistent named volume for backend data
       - ./backend-config:/usr/src/app/config  # Local bind mount for backend configs
-      - .:/usr/src/app  # Mount local code to enable live updates
+      - ./src:/usr/src/app  # Mount only the src folder (prevents overwriting package.json)
     restart: always  # Ensures the service restarts if it crashes
 
 networks:
