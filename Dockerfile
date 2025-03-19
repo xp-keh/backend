@@ -13,8 +13,11 @@ RUN npm install
 # Copy the rest of your application code
 COPY . .
 
-# Expose the port your app runs on (e.g., 3000)
+# Expose the correct port
 EXPOSE 4000
 
+# Ensure node_modules is accessible when using volumes
+RUN chmod -R 777 /usr/src/app/node_modules
+
 # Command to run your app
-CMD [ "npm", "start" ]
+CMD ["npm", "start"]

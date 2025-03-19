@@ -2,14 +2,15 @@ services:
   backend:
     build: .
     ports:
-      - "4000:3000"
-    command: npm start
+      - "4000:4000"  # Corrected port mapping
     networks:
       data-station-network:
         ipv4_address: 172.20.14.91
     volumes:
-      - backend-storage:/app/data  # Persistent named volume for backend data
-      - ./backend-config:/app/config  # Local bind mount for backend configs
+      - backend-storage:/usr/src/app/data  # Persistent named volume for backend data
+      - ./backend-config:/usr/src/app/config  # Local bind mount for backend configs
+      - .:/usr/src/app  # Mount local code to enable live updates
+    restart: always  # Ensures the service restarts if it crashes
 
 networks:
   data-station-network:
