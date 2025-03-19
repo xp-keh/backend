@@ -18,33 +18,33 @@ const loginLimiter = rateLimit({
 });
 
 // ** Register a new user **
-// router.post('/register', [
-//     body('username').trim().isLength({ min: 3 }).escape(),
-//     body('email').isEmail().normalizeEmail(),
-//     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-//     body('name').trim().notEmpty().escape()
-// ], async (req, res) => {
-//     const errors = validationResult(req);
-//     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+router.post('/register', [
+    body('username').trim().isLength({ min: 3 }).escape(),
+    body('email').isEmail().normalizeEmail(),
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body('name').trim().notEmpty().escape()
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-//     const { username, password, name, email } = req.body;
+    const { username, password, name, email } = req.body;
 
-//     try {
-//         const userCheck = await pool.query('SELECT * FROM users WHERE username = $1 OR email = $2', [username, email]);
-//         if (userCheck.rows.length > 0) {
-//             return res.status(400).json({ error: 'Username or email already exists' });
-//         }
+    try {
+        const userCheck = await pool.query('SELECT * FROM users WHERE username = $1 OR email = $2', [username, email]);
+        if (userCheck.rows.length > 0) {
+            return res.status(400).json({ error: 'Username or email already exists' });
+        }
 
-//         const hashedPassword = await bcrypt.hash(password, saltRounds);
-//         await pool.query('INSERT INTO users (username, password, name, email) VALUES ($1, $2, $3, $4)', 
-//                          [username, hashedPassword, name, email]);
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+        await pool.query('INSERT INTO users (username, password, name, email) VALUES ($1, $2, $3, $4)', 
+                         [username, hashedPassword, name, email]);
 
-//         res.status(201).json({ message: 'User registered successfully' });
-//     } catch (error) {
-//         console.error(error);
-//         res.status(500).json({ error: 'Server error' });
-//     }
-// });
+        res.status(201).json({ message: 'User registered successfully' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 
 // ** Login User **
 router.post('/login', loginLimiter, [
