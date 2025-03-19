@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-console.log("Starting application...");
-console.log("Environment Variables:");
-console.log("NODE_ENV:", process.env.NODE_ENV || "not set");
-console.log("API_KEY:", process.env.API_KEY || "not set");
-console.log("DATABASE_URL:", process.env.DATABASE_URL || "not set"); // Add more as needed
 
 /**
  * Module dependencies.
