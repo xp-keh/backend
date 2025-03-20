@@ -6,14 +6,7 @@ services:
     networks:
       data-station-network:
         ipv4_address: 172.20.14.91
-    volumes:
-      - backend-storage:/usr/src/app/data  # Persistent named volume for backend data
-      - ./backend-config:/usr/src/app/config  # Local bind mount for backend configs
-    restart: always  # Ensures the service restarts if it crashes
 
 networks:
   data-station-network:
     external: true
-
-volumes:
-  backend-storage:
