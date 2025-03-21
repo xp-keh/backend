@@ -1,29 +1,18 @@
-# Use official Node.js LTS as a base image
-FROM node:18
+# Use an official Node.js base image
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /usr/src/app
 
-# Copy package.json and package-lock.json for better build caching
+# Install dependencies
 COPY package*.json ./
+RUN npm install
 
-# Install dependencies efficiently
-RUN npm install --only=production
-
-# Copy the rest of the application source code
+# Copy rest of the code
 COPY . .
 
-# Set environment variable (optional, recommended for production)
-ENV NODE_ENV=production
+# Expose the port the app runs on
+EXPOSE 3000
 
-# Expose the correct application port
-EXPOSE 4000
-
-# Ensure correct file permissions (if required)
-RUN chown -R node:node /usr/src/app
-
-# Switch to non-root user for security
-USER node
-
-# Command to start the application
+# Start the app
 CMD ["npm", "start"]

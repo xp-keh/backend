@@ -11,8 +11,13 @@ var authRouter = require('./routes/auth');
 var indexRouter = require('./routes/index');
 var catalogRouter = require('./routes/catalog');
 var retrieveRouter = require('./routes/retrieve');
+const helmet = require('helmet');
+const xss = require('xss-clean');
 
 var app = express();
+
+app.use(helmet());
+app.use(xss());
 
 // ==== CORS Setup ====
 // Allow credentials (cookies), specific origins, and headers
