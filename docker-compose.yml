@@ -2,9 +2,11 @@ services:
   backend:
     build: .
     ports:
-      - "3000:3000"
-    env_file:
-      - .env
+      - "${PORT}:${PORT}"
+    environment:
+      - PORT=${PORT}
+      - CLIENT_URL=${CLIENT_URL}
+      - JWT_SECRET=${JWT_SECRET}
     volumes:
       - .:/usr/src/app
     restart: always
