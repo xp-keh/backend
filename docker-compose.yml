@@ -1,6 +1,8 @@
 services:
   backend:
     build: .
+    env_file:
+      - stack.env
     ports:
       - "${PORT}:${PORT}"
     networks:
