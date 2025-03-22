@@ -1,6 +1,8 @@
 # Use an official Node.js base image
 FROM node:20-alpine
 
+RUN apk add --no-cache curl
+
 # Set working directory
 WORKDIR /usr/src/app
 
