@@ -3,8 +3,8 @@ var router = express.Router();
 
 const authenticateToken = require('../middleware/authMiddleware');
 
-router.get('/', authenticateToken, function (req, res, next) {
-  res.send('Hello World!')
+router.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
 });
 
 module.exports = router;
