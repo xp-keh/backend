@@ -1,15 +1,27 @@
+require("dotenv").config();
 const express = require("express");
 const router = express.Router();
-// const clickhouse = require("../config/clickhouse");
 const { createClient } = require("@clickhouse/client");
 const moment = require("moment-timezone");
+const axios = require("axios");
 
 const clickhouse = createClient({
-  url: "http://85.209.163.202:8123",
-  username: "abby",
-  password: "SpeakLouder",
-  database: "weather_dev_1",
+  url: process.env.CLICKHOUSE_URL,
+  username: process.env.CLICKHOUSE_USER,
+  password: process.env.CLICKHOUSE_PASSWORD,
+  database: process.env.POSTGRES_DB_WEATHER,
 });
+
+const API_KEY = "7794c2f0e827d159325b614c8b7945a5";
+const BASE_URL = "https://pro.openweathermap.org/data/2.5/forecast/hourly";
+
+const cityCoordinates = {
+  Kretek: { lat: "-7.9923", lon: "110.2973" },
+  Jogjakarta: { lat: "-7.8021", lon: "110.3628" },
+  Menggoran: { lat: "-7.9525", lon: "110.4942" },
+  Bandara_DIY: { lat: "-7.9007", lon: "110.0573" },
+  Bantul: { lat: "-7.8750", lon: "110.3268" },
+};
 
 async function fetchLast2DaysWeather() {
   try {
@@ -18,10 +30,6 @@ async function fetchLast2DaysWeather() {
 
     const startTable = `weather_${twoDaysAgo.format("YYYYMMDD_HHmm")}`;
     const endTable = `weather_${now.format("YYYYMMDD_HHmm")}`;
-
-    console.log(
-      `🔍 Searching weather tables from ${startTable} to ${endTable}`
-    );
 
     const tableListQuery = `
             SELECT name 
@@ -51,12 +59,14 @@ async function fetchLast2DaysWeather() {
             argMax(temp, dt) AS temp, 
             argMax(humidity, dt) AS humidity, 
             argMax(wind_speed, dt) AS wind_speed, 
-            argMax(wind_deg, dt) AS wind_deg
+            argMax(wind_deg, dt) AS wind_deg,
+            argMax(wind_gust, dt) AS wind_gust
+
         FROM (
             ${tableNames
               .map(
                 (table) => `
-                    SELECT location, temp, humidity, wind_speed, wind_deg, dt 
+                    SELECT location, temp, humidity, wind_speed, wind_deg, dt, wind_gust
                     FROM weather_dev_1.${table}
                 `
               )
@@ -65,8 +75,6 @@ async function fetchLast2DaysWeather() {
         GROUP BY location, dt
         ORDER BY dt ASC;
     `;
-
-    console.log(`Executing query for tables: ${tableNames.join(", ")}`);
 
     const weatherDataResult = await clickhouse.query({
       query: unionQuery,
@@ -80,6 +88,33 @@ async function fetchLast2DaysWeather() {
     throw error;
   }
 }
+
+router.get("/forecast_next_5_hours", async (req, res) => {
+  try {
+    const forecasts = await Promise.all(
+      Object.entries(cityCoordinates).map(async ([city, { lat, lon }]) => {
+        const response = await axios.get(BASE_URL, {
+          params: { lat, lon, appid: API_KEY, units: "metric" },
+        });
+
+        return response.data.list.slice(0, 5).map((entry) => ({
+          location: city,
+          dt: moment
+            .unix(entry.dt)
+            .tz("Asia/Jakarta")
+            .format("YYYY-MM-DD HH:mm:ss"),
+          temp: entry.main.temp,
+          description: entry.weather[0].description,
+        }));
+      })
+    );
+
+    res.json({ forecast: forecasts.flat() });
+  } catch (error) {
+    console.error("Error fetching forecast:", error);
+    res.status(500).json({ error: "Failed to fetch forecast data" });
+  }
+});
 
 router.get("/fetch_last_2_days", async (req, res) => {
   try {
