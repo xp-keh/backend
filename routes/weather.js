@@ -13,7 +13,8 @@ const clickhouse = createClient({
 });
 
 const API_KEY = "7794c2f0e827d159325b614c8b7945a5";
-const BASE_URL = "https://pro.openweathermap.org/data/2.5/forecast/hourly";
+const BASE_URL_h = "https://pro.openweathermap.org/data/2.5/forecast/hourly";
+const BASE_URL_d = "https://pro.openweathermap.org/data/2.5/forecast/daily";
 
 const cityCoordinates = {
   Kretek: { lat: "-7.9923", lon: "110.2973" },
@@ -30,6 +31,8 @@ async function fetchLast2DaysWeather() {
 
     const startTable = `weather_${twoDaysAgo.format("YYYYMMDD_HHmm")}`;
     const endTable = `weather_${now.format("YYYYMMDD_HHmm")}`;
+
+    // console.log("Searching from " + startTable + " to " + endTable);
 
     const tableListQuery = `
             SELECT name 
@@ -93,7 +96,7 @@ router.get("/forecast_next_5_hours", async (req, res) => {
   try {
     const forecasts = await Promise.all(
       Object.entries(cityCoordinates).map(async ([city, { lat, lon }]) => {
-        const response = await axios.get(BASE_URL, {
+        const response = await axios.get(BASE_URL_h, {
           params: { lat, lon, appid: API_KEY, units: "metric" },
         });
 
@@ -112,6 +115,30 @@ router.get("/forecast_next_5_hours", async (req, res) => {
     res.json({ forecast: forecasts.flat() });
   } catch (error) {
     console.error("Error fetching forecast:", error);
+    res.status(500).json({ error: "Failed to fetch forecast data" });
+  }
+});
+
+router.get("/forecast_next_7_days", async (req, res) => {
+  try {
+    const forecasts = await Promise.all(
+      Object.entries(cityCoordinates).map(async ([city, { lat, lon }]) => {
+        const response = await axios.get(BASE_URL_d, {
+          params: { lat, lon, appid: API_KEY, units: "metric", cnt: 8 },
+        });
+
+        return response.data.list.slice(1, 7).map((entry) => ({
+          location: city,
+          dt: moment.unix(entry.dt).tz("Asia/Jakarta").format("YYYY-MM-DD"),
+          temp: entry.temp.day,
+          description: entry.weather[0].description,
+        }));
+      })
+    );
+
+    res.json({ forecast: forecasts.flat() });
+  } catch (error) {
+    console.error("Error fetching 8-day forecast:", error);
     res.status(500).json({ error: "Failed to fetch forecast data" });
   }
 });
