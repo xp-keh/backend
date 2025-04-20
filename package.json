@@ -23,6 +23,7 @@
     "jsonwebtoken": "^9.0.2",
     "moment-timezone": "^0.5.47",
     "morgan": "~1.9.1",
+    "node-fetch": "^3.3.2",
     "pg": "^8.13.3",
     "xss-clean": "^0.1.4"
   }
