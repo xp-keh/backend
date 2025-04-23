@@ -1,6 +1,8 @@
 const { getLLMCompletion } = require('../config/togetherLLM');
 const pool = require("../config/postgis");
 const clickhouse = require("../config/clickhouse");
+const crypto = require('crypto');
+const redis = require('../config/redis');
 
 function buildPrompt(question, lat, lon) {
     const tableInfo = `
@@ -89,6 +91,10 @@ Question: "${question}"
 `;
 }
 
+function hashPrompt(prompt) {
+    return crypto.createHash('sha256').update(prompt).digest('hex');
+}
+
 function buildAnswerPrompt({ question, query, result }) {
     let safeResult;
     try {
@@ -109,7 +115,8 @@ Keep it brief, natural, and user-friendly.`;
 }
 
 function extractSQLFromLLMOutput(llmOutput) {
-    const match = llmOutput.match(/SQLQuery:\s*([\s\S]*?)\s*SQLResult:/);
+    const match = llmOutput.match(/SQLQuery:\s*([\s\S]*?)(?:\s*SQLResult:|\s*Answer:|$)/);
+
 
     if (!match || !match[1]) {
         console.error("[ERROR][extractSQL] Failed to extract SQL from LLM output.\n", llmOutput);
@@ -144,7 +151,6 @@ function extractSQLFromLLMOutput(llmOutput) {
     return patchedSQL;
 }
 
-
 async function safeGetLLMCompletion(prompt) {
     try {
         const response = await getLLMCompletion(prompt);
@@ -163,9 +169,19 @@ async function safeGetLLMCompletion(prompt) {
 async function runAgent({ question, lat, lon, start_date, end_date }) {
     try {
         const rawPrompt = buildPrompt(question, lat, lon, start_date, end_date);
-        const llmOutput = await safeGetLLMCompletion(rawPrompt);
+        const promptHash = hashPrompt(rawPrompt);
 
+        const cachedSQL = await redis.get(`sql:${promptHash}`);
+        const cachedAnswer = await redis.get(`answer:${promptHash}`);
+        if (cachedSQL && cachedAnswer) {
+            console.log('[CACHE][Hit] Using cached result for prompt.');
+            return JSON.parse(cachedAnswer); // already has { status, message }
+        }
+
+        const llmOutput = await safeGetLLMCompletion(rawPrompt);
         const patchedSQL = extractSQLFromLLMOutput(llmOutput);
+
+        await redis.set(`sql:${promptHash}`, patchedSQL, { EX: 86400 }); // 1 day TTL
 
         const result = await clickhouse.query({ query: patchedSQL, format: "JSON" });
         const data = await result.json();
@@ -173,7 +189,14 @@ async function runAgent({ question, lat, lon, start_date, end_date }) {
         const answerPrompt = buildAnswerPrompt({ question, query: patchedSQL, result: data });
         const finalAnswer = await safeGetLLMCompletion(answerPrompt);
 
-        return finalAnswer;
+        const answerPayload = {
+            status: "success",
+            message: finalAnswer
+        };
+
+        await redis.set(`answer:${promptHash}`, JSON.stringify(answerPayload), { EX: 86400 });
+
+        return answerPayload;
     } catch (error) {
         console.error("[ERROR][runAgent]", error);
 
