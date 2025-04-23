@@ -24,7 +24,7 @@ services:
     ports:
       - "6379:6379"
     networks:
-      - backend-network
+      - data-station-network
 
 networks:
    data-station-network:
