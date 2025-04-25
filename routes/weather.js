@@ -24,7 +24,7 @@ const cityCoordinates = {
   Bantul: { lat: "-7.8750", lon: "110.3268" },
 };
 
-async function fetchWeatherData(type) {
+async function fetchWeatherData(type, city) {
   try {
     const now = moment().tz("UTC");
     const twoDaysAgo = now.clone().subtract(1, "days");
@@ -176,31 +176,13 @@ router.get("/forecast_next_7_days", async (req, res) => {
   }
 });
 
-router.get("/fetch_temp", async (req, res) => {
+router.get("/fetch_weather", async (req, res) => {
+  const type = req.query.type;
   try {
-    const data = await fetchWeatherData("temp");
-    console.log(data);
-    res.json({ temperature_data: data });
+    const data = await fetchWeatherData(type);
+    res.json({ data: data });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch temperature data" });
-  }
-});
-
-router.get("/fetch_hum", async (req, res) => {
-  try {
-    const data = await fetchWeatherData("humidity");
-    res.json({ humidity_data: data });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch humidity data" });
-  }
-});
-
-router.get("/fetch_wind", async (req, res) => {
-  try {
-    const data = await fetchWeatherData("wind");
-    res.json({ wind_data: data });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch wind data" });
   }
 });
 
