@@ -9,7 +9,7 @@ const clickhouse = createClient({
   url: process.env.CLICKHOUSE_URL,
   username: process.env.CLICKHOUSE_USER,
   password: process.env.CLICKHOUSE_PASSWORD,
-  database: process.env.POSTGRES_DB_WEATHER,
+  database: process.env.CLICKHOUSE_DB_WEATHER,
 });
 
 const API_KEY = "7794c2f0e827d159325b614c8b7945a5";
@@ -24,15 +24,13 @@ const cityCoordinates = {
   Bantul: { lat: "-7.8750", lon: "110.3268" },
 };
 
-async function fetchLast2DaysWeather() {
+async function fetchWeatherData(type) {
   try {
     const now = moment().tz("UTC");
     const twoDaysAgo = now.clone().subtract(1, "days");
 
     const startTable = `weather_${twoDaysAgo.format("YYYYMMDD_HHmm")}`;
     const endTable = `weather_${now.format("YYYYMMDD_HHmm")}`;
-
-    // console.log("Searching from " + startTable + " to " + endTable);
 
     const tableListQuery = `
             SELECT name 
@@ -49,7 +47,6 @@ async function fetchLast2DaysWeather() {
     });
 
     const tableData = await tableListResult.json();
-
     const tableNames = tableData.data.map((row) => row.name);
 
     if (tableNames.length === 0) {
@@ -57,19 +54,16 @@ async function fetchLast2DaysWeather() {
       return [];
     }
 
-    const unionQuery = `
+    let unionQuery;
+    if (type === "temp") {
+      unionQuery = `
         SELECT location, dt, 
-            argMax(temp, dt) AS temp, 
-            argMax(humidity, dt) AS humidity, 
-            argMax(wind_speed, dt) AS wind_speed, 
-            argMax(wind_deg, dt) AS wind_deg,
-            argMax(wind_gust, dt) AS wind_gust
-
+            argMax(temp, dt) AS temp
         FROM (
             ${tableNames
               .map(
                 (table) => `
-                    SELECT location, temp, humidity, wind_speed, wind_deg, dt, wind_gust
+                    SELECT location, temp, dt
                     FROM weather_dev_1.${table}
                 `
               )
@@ -77,7 +71,46 @@ async function fetchLast2DaysWeather() {
         )
         GROUP BY location, dt
         ORDER BY dt ASC;
-    `;
+      `;
+    } else if (type === "humidity") {
+      unionQuery = `
+        SELECT location, dt, 
+            argMax(humidity, dt) AS humidity
+        FROM (
+            ${tableNames
+              .map(
+                (table) => `
+                    SELECT location, humidity, dt
+                    FROM weather_dev_1.${table}
+                `
+              )
+              .join(" UNION ALL ")}
+        )
+        GROUP BY location, dt
+        ORDER BY dt ASC;
+      `;
+    } else if (type === "wind") {
+      unionQuery = `
+        SELECT location, dt, 
+            argMax(wind_speed, dt) AS wind_speed, 
+            argMax(wind_deg, dt) AS wind_deg,
+            argMax(wind_gust, dt) AS wind_gust
+        FROM (
+            ${tableNames
+              .map(
+                (table) => `
+                    SELECT location, wind_speed, wind_deg, wind_gust, dt
+                    FROM weather_dev_1.${table}
+                `
+              )
+              .join(" UNION ALL ")}
+        )
+        GROUP BY location, dt
+        ORDER BY dt ASC;
+      `;
+    } else {
+      throw new Error("Invalid data type specified");
+    }
 
     const weatherDataResult = await clickhouse.query({
       query: unionQuery,
@@ -87,7 +120,7 @@ async function fetchLast2DaysWeather() {
 
     return weatherData.data;
   } catch (error) {
-    console.error("Error fetching last 2 days' weather data:", error);
+    console.error(`Error fetching weather data for ${type}:`, error);
     throw error;
   }
 }
@@ -143,12 +176,31 @@ router.get("/forecast_next_7_days", async (req, res) => {
   }
 });
 
-router.get("/fetch_last_2_days", async (req, res) => {
+router.get("/fetch_temp", async (req, res) => {
   try {
-    const data = await fetchLast2DaysWeather();
-    res.json({ weather_data: data });
+    const data = await fetchWeatherData("temp");
+    console.log(data);
+    res.json({ temperature_data: data });
   } catch (error) {
-    res.status(500).json({ error: "Failed to fetch weather data" });
+    res.status(500).json({ error: "Failed to fetch temperature data" });
+  }
+});
+
+router.get("/fetch_hum", async (req, res) => {
+  try {
+    const data = await fetchWeatherData("humidity");
+    res.json({ humidity_data: data });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch humidity data" });
+  }
+});
+
+router.get("/fetch_wind", async (req, res) => {
+  try {
+    const data = await fetchWeatherData("wind");
+    res.json({ wind_data: data });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch wind data" });
   }
 });
 
