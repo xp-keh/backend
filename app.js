@@ -12,6 +12,7 @@ var indexRouter = require("./routes/index");
 var catalogRouter = require("./routes/catalog");
 var retrieveRouter = require("./routes/retrieve");
 var weatherRouter = require("./routes/weather");
+var seismicRouter = require("./routes/seismic");
 const helmet = require("helmet");
 const xss = require("xss-clean");
 
@@ -43,6 +44,7 @@ app.use("/auth", authRouter);
 app.use("/catalog", catalogRouter);
 app.use("/retrieve", retrieveRouter);
 app.use("/weather", weatherRouter);
+app.use("/seismic", seismicRouter);
 
 app.use(function (req, res, next) {
   next(createError(404));
