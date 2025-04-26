@@ -17,11 +17,30 @@ const BASE_URL_h = "https://pro.openweathermap.org/data/2.5/forecast/hourly";
 const BASE_URL_d = "https://pro.openweathermap.org/data/2.5/forecast/daily";
 
 const cityCoordinates = {
-  Kretek: { lat: "-7.9923", lon: "110.2973" },
-  Jogjakarta: { lat: "-7.8021", lon: "110.3628" },
-  Menggoran: { lat: "-7.9525", lon: "110.4942" },
-  Bandara_DIY: { lat: "-7.9007", lon: "110.0573" },
-  Bantul: { lat: "-7.8750", lon: "110.3268" },
+  TNTI: { lat: "0.7718", lon: "127.3667" },
+  TOLI: { lat: "1.1214", lon: "120.7944" },
+  GENI: { lat: "-2.5927", lon: "140.1678" },
+  PMBI: { lat: "-2.9024", lon: "104.6993" },
+  BKB: { lat: "-1.1073", lon: "116.9048" },
+  SOEI: { lat: "-9.7553", lon: "124.2672" },
+  SANI: { lat: "-2.0496", lon: "125.9881" },
+  MMRI: { lat: "-8.6357", lon: "122.2376" },
+  PMBT: { lat: "-2.9270", lon: "104.7720" },
+  TOLI2: { lat: "1.11119", lon: "120.78174" },
+  BKNI: { lat: "0.3262", lon: "101.0396" },
+  UGM: { lat: "-7.9125", lon: "110.5231" },
+  FAKI: { lat: "-2.91925", lon: "132.24889" },
+  CISI: { lat: "-7.5557", lon: "107.8153" },
+  BNDI: { lat: "-4.5224", lon: "129.9045" },
+  PLAI: { lat: "-8.8275", lon: "117.7765" },
+  MNAI: { lat: "-4.3605", lon: "102.9557" },
+  GSI: { lat: "1.3039", lon: "97.5755" },
+  SMRI: { lat: "-7.04915", lon: "110.44067" },
+  SAUI: { lat: "-7.9826", lon: "131.2988" },
+  YOGI: { lat: "-7.8166", lon: "110.2949" },
+  LHMI: { lat: "5.2288", lon: "96.9472" },
+  LUWI: { lat: "-1.0418", lon: "122.7717" },
+  JAGI: { lat: "-8.4702", lon: "114.1521" },
 };
 
 async function fetchWeatherData(type, city) {
@@ -65,6 +84,7 @@ async function fetchWeatherData(type, city) {
                 (table) => `
                     SELECT location, temp, dt
                     FROM weather_dev_1.${table}
+                    WHERE location = '${city}'
                 `
               )
               .join(" UNION ALL ")}
@@ -72,7 +92,7 @@ async function fetchWeatherData(type, city) {
         GROUP BY location, dt
         ORDER BY dt ASC;
       `;
-    } else if (type === "humidity") {
+    } else if (type === "hum") {
       unionQuery = `
         SELECT location, dt, 
             argMax(humidity, dt) AS humidity
@@ -82,6 +102,7 @@ async function fetchWeatherData(type, city) {
                 (table) => `
                     SELECT location, humidity, dt
                     FROM weather_dev_1.${table}
+                    WHERE location = '${city}'
                 `
               )
               .join(" UNION ALL ")}
@@ -101,6 +122,7 @@ async function fetchWeatherData(type, city) {
                 (table) => `
                     SELECT location, wind_speed, wind_deg, wind_gust, dt
                     FROM weather_dev_1.${table}
+                    WHERE location = '${city}'
                 `
               )
               .join(" UNION ALL ")}
@@ -178,8 +200,9 @@ router.get("/forecast_next_7_days", async (req, res) => {
 
 router.get("/fetch_weather", async (req, res) => {
   const type = req.query.type;
+  const city = req.query.city;
   try {
-    const data = await fetchWeatherData(type);
+    const data = await fetchWeatherData(type, city);
     res.json({ data: data });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch temperature data" });
