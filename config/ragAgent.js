@@ -160,7 +160,6 @@ function extractSQLFromLLMOutput(llmOutput, dbName = 'weather_dev_3', start_date
 
     const dailyTableMatch = cleanedSQL.match(/\bweather_(\d{8})\b/);
     if (!dailyTableMatch || !start_date || !end_date) {
-        // fallback: patch basic table namespace
         const fallbackSQL = cleanedSQL.replace(/\bweather_(\d{8}_\d{4})\b/g, `${dbName}.weather_$1`);
         console.log("[DEBUG][extractSQL] Final SQL to execute (fallback):", fallbackSQL);
         return fallbackSQL;
