@@ -51,7 +51,7 @@ async function fetchPreviewData(start_time, end_time, longitude, latitude, radiu
       FROM ${seismicDbName}.${seismicTable}
       WHERE greatCircleDistance(lat, lon, ${latitude}, ${longitude}) < ${searchRadius}
       ORDER BY dt ASC
-      LIMIT 50
+      LIMIT 250
     `;
 
     const weatherQuery = `
@@ -61,7 +61,7 @@ async function fetchPreviewData(start_time, end_time, longitude, latitude, radiu
       FROM ${weatherDbName}.${matchingWeatherTable}
       WHERE greatCircleDistance(lat, lon, ${latitude}, ${longitude}) < ${searchRadius}
       ORDER BY dt_format ASC
-      LIMIT 50
+      LIMIT 250
     `;
 
     const seismicResult = await clickhouse.query({ query: seismicQuery, format: "JSON" });
@@ -71,26 +71,34 @@ async function fetchPreviewData(start_time, end_time, longitude, latitude, radiu
     const weatherData = (await weatherResult.json()).data;
 
     // Join manually
+    const seenTimestamps = new Set();
+
     for (const seismic of seismicData) {
+      if (seenTimestamps.has(seismic.dt)) continue;
+
       const weather = weatherData.find(w => seismic.dt === w.dt_format);
 
       previewData.push({
-        dt: seismic.dt,
-        lat: seismic.lat,
-        lon: seismic.lon,
-        seismic_data: seismic.data,
-        network: seismic.network,
-        station: seismic.station,
-        channel: seismic.channel,
-        temp: weather?.temp ?? null,
-        humidity: weather?.humidity ?? null,
-        pressure: weather?.pressure ?? null,
-        wind_speed: weather?.wind_speed ?? null,
-        clouds: weather?.clouds ?? null
+        Timestamp: seismic.dt,
+        Lat: seismic.lat,
+        Lon: seismic.lon,
+        Network: seismic.network,
+        Station: seismic.station,
+        BHE: seismic.BHE,
+        BHN: seismic.BHN,
+        BHZ: seismic.BHZ,
+        Temprature: weather?.temp ?? null,
+        Humidity: weather?.humidity ?? null,
+        Pressure: weather?.pressure ?? null,
+        Wind: weather?.wind_speed ?? null,
+        Clouds: weather?.clouds ?? null
       });
+
+      seenTimestamps.add(seismic.dt);
 
       if (previewData.length >= 10) break;
     }
+
 
     if (previewData.length >= 10) break;
   }
