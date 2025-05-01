@@ -3,92 +3,110 @@ const pool = require("../config/postgis");
 const clickhouse = require("../config/clickhouse");
 const crypto = require('crypto');
 const redis = require('../config/redis');
+const moment = require('moment');
+
+function getHourlyTableNames(baseName, start, end) {
+    const tables = [];
+    let current = moment.utc(start);
+    const endMoment = moment.utc(end);
+
+    while (current <= endMoment) {
+        const table = `${baseName}_${current.format("YYYYMMDD_HHmm")}`;
+        tables.push(table);
+        current.add(1, 'hour');
+    }
+
+    return tables;
+}
 
 function buildPrompt(question, lat, lon) {
     const tableInfo = `
-weather_YYYYMMDD(
-  "timestamp" DateTime,
-  "longitude" Float64,
-  "latitude" Float64,
-  "sys_country" String,
-  "clouds_all" Int8,
-  "wind_speed" Float32,
-  "wind_deg" Int16,
-  "main_pressure" Int16,
-  "main_sea_level" Int16,
-  "main_grnd_level" Int16,
-  "main_temp" Float32,
-  "main_temp_min" Float32,
-  "main_temp_max" Float32,
-  "main_feels_like" Float32,
-  "main_humidity" Int8,
-  "visibility" Int16,
-  "weather_main" String,
-  "weather_description" String,
-  "weather_icon" String,
-  "geom" String
-)`;
+        weather_YYYYMMDD_HHmm(
+            location String,
+            lat Float64,
+            lon Float64,
+            temp Float64,
+            feels_like Float64,
+            temp_min Float64,
+            temp_max Float64,
+            pressure Int32,
+            humidity Int32,
+            wind_speed Float64,
+            wind_deg Int32,
+            wind_gust Float64,
+            clouds Int32,
+            timestamp UInt32,
+            dt DateTime64(6),
+            dt_format String 
+        )
+        -- Tables are partitioned hourly, e.g. weather_20250426_0000, weather_20250426_0100, etc.
+        -- Use UNION ALL when querying across multiple hours.
+    `;
 
     const spatialFilter = (lat != null && lon != null)
         ? `To filter spatially, use:\ngreatCircleDistance("latitude", "longitude", ${lat}, ${lon}) < 20000`
         : '';
 
     return `
-Always use the exact following format. Do NOT skip or modify labels:
-Question: "..."
-SQLQuery: SELECT ... ← do NOT wrap this in quotes
-SQLResult: "..."  ← leave empty or fake value if needed
-Answer: "..."  ← your best guess based on the SQLResult
+        Always use the exact following format. Do NOT skip or modify labels:
+        Question: "..."
+        SQLQuery: SELECT ... ← do NOT wrap this in quotes
+        SQLResult: "..."  ← leave empty or fake value if needed
+        Answer: "..."  ← your best guess based on the SQLResult
 
-You are a ClickHouse SQL expert. Given an input question, first create a syntactically correct ClickHouse SQL query to run.
+        You are a ClickHouse SQL expert. Given an input question, first create a syntactically correct ClickHouse SQL query to run.
 
-Use only the following tables:
-${tableInfo}
+        Use only the following tables:
+        ${tableInfo}
 
-Wrap each column name in double quotes. Use only the columns listed in the schema.
-Avoid hallucinating columns or referencing non-existent tables.
+        Wrap each column name in double quotes. Use only the columns listed in the schema.
+        Avoid hallucinating columns or referencing non-existent tables.
 
-The column "geom" is a WKT geometry.
-${spatialFilter}
+        The column "geom" is a WKT geometry.
+        ${spatialFilter}
 
-The user wants a maximum of 100 results unless specified otherwise.
+        The user wants a maximum of 100 results unless specified otherwise.
 
-Given a user query, generate an optimized SQL query for ClickHouse.
-Ensure you use aggregate functions like AVG, MAX, MIN when retrieving numerical data.
+        Given a user query, generate an optimized SQL query for ClickHouse.
+        Ensure you use aggregate functions like AVG, MAX, MIN when retrieving numerical data.
 
-Example:
+        Example:
 
-User: "What was the weather like in Jakarta on January 1, 2024?"
-SQLQuery: SELECT 
-  AVG(\"main_temp\") AS avg_temp,
-  AVG(\"main_humidity\") AS avg_humidity,
-  AVG(\"wind_speed\") AS avg_wind_speed,
-  any(\"weather_main\") AS weather_main,
-  any(\"weather_description\") AS weather_description
-FROM weather_20240101
-WHERE greatCircleDistance(\"latitude\", \"longitude\", -6.1944, 106.8229) < 20000
+        User: "What was the weather like in Jakarta on April 26, 2025 at midnight?"
+        SQLQuery: SELECT 
+            AVG("temp") AS avg_temp,
+            AVG("humidity") AS avg_humidity,
+            AVG("wind_speed") AS avg_wind_speed,
+            any("clouds") AS cloud_coverage
+        FROM weather_20250426_0000
+        WHERE greatCircleDistance("lat", "lon", -6.1944, 106.8229) < 20000
+            AND "dt" BETWEEN '2025-04-26 00:00:00' AND '2025-04-26 00:59:59'
 
-User: "What was the weather like in Surabaya between January 1 and January 2, 2024?"
-SQLQuery: SELECT
-  AVG("main_temp") AS avg_temp,
-  AVG("main_humidity") AS avg_humidity,
-  AVG("wind_speed") AS avg_wind_speed,
-  any("weather_main") AS weather_main,
-  any("weather_description") AS weather_description
-FROM weather_20240101
-WHERE greatCircleDistance("latitude", "longitude", -6.1944, 106.8229) < 20000
-UNION ALL
-SELECT
-  AVG("main_temp") AS avg_temp,
-  AVG("main_humidity") AS avg_humidity,
-  AVG("wind_speed") AS avg_wind_speed,
-  any("weather_main") AS weather_main,
-  any("weather_description") AS weather_description
-FROM weather_20240102
-WHERE greatCircleDistance("latitude", "longitude", -6.1944, 106.8229) < 20000
+        User: "What was the weather like in Surabaya between January 1 and January 2, 2024?"
+        SQLQuery: SELECT
+        AVG("temp") AS avg_temp,
+        AVG("humidity") AS avg_humidity,
+        AVG("wind_speed") AS avg_wind_speed,
+        any("weather_main") AS weather_main,
+        any("weather_description") AS weather_description
+        FROM weather_20240101_0000
+        WHERE greatCircleDistance("lat", "lon", -7.2575, 112.7521) < 20000
+        AND "dt" BETWEEN '2024-01-01 00:00:00' AND '2024-01-01 00:59:59'
+        UNION ALL
+        SELECT
+        AVG("temp") AS avg_temp,
+        AVG("humidity") AS avg_humidity,
+        AVG("wind_speed") AS avg_wind_speed,
+        any("weather_main") AS weather_main,
+        any("weather_description") AS weather_description
+        FROM weather_20240101_0100
+        WHERE greatCircleDistance("lat", "lon", -7.2575, 112.7521) < 20000
+        AND "dt" BETWEEN '2024-01-01 01:00:00' AND '2024-01-01 01:59:59'
+        UNION ALL
+        -- (continue for all hourly tables up to '2024-01-02 23:59:59')
 
-Question: "${question}"
-`;
+        Question: "${question}"
+    `;
 }
 
 function hashPrompt(prompt) {
@@ -114,9 +132,8 @@ Do NOT explain unit conversions.
 Keep it brief, natural, and user-friendly.`;
 }
 
-function extractSQLFromLLMOutput(llmOutput) {
+function extractSQLFromLLMOutput(llmOutput, dbName = 'weather_dev_3', start_date, end_date) {
     const match = llmOutput.match(/SQLQuery:\s*([\s\S]*?)(?:\s*SQLResult:|\s*Answer:|$)/);
-
 
     if (!match || !match[1]) {
         console.error("[ERROR][extractSQL] Failed to extract SQL from LLM output.\n", llmOutput);
@@ -127,28 +144,37 @@ function extractSQLFromLLMOutput(llmOutput) {
 
     console.log("[DEBUG][extractSQL] Raw SQL from LLM:", rawSQL);
 
-    // Sanitize it
     const cleanedSQL = rawSQL
         .replace(/\\n/g, ' ')
         .replace(/\\"/g, '"')
         .replace(/\\+/g, '')
-        .replace(/FORMAT\s+JSON\s*;?/gi, '')  // Remove redundant FORMAT JSON
-        .replace(/;\s*$/, '')  // Remove trailing semicolon
-        .replace(/\s+/g, ' ')  // Collapse whitespace
+        .replace(/FORMAT\s+JSON\s*;?/gi, '')
+        .replace(/;\s*$/, '')
+        .replace(/\s+/g, ' ')
         .trim();
 
-    // Validate
     if (!/^SELECT\s/i.test(cleanedSQL)) {
         console.error("[ERROR][extractSQL] Invalid SQL after cleanup:\n", cleanedSQL);
         throw new Error("Cleaned SQL does not start with SELECT.");
     }
 
-    // Namespace patching
-    const patchedSQL = cleanedSQL.replace(/\bweather_(\d{8})\b/g, 'weather.weather_$1');
+    const dailyTableMatch = cleanedSQL.match(/\bweather_(\d{8})\b/);
+    if (!dailyTableMatch || !start_date || !end_date) {
+        // fallback: patch basic table namespace
+        const fallbackSQL = cleanedSQL.replace(/\bweather_(\d{8}_\d{4})\b/g, `${dbName}.weather_$1`);
+        console.log("[DEBUG][extractSQL] Final SQL to execute (fallback):", fallbackSQL);
+        return fallbackSQL;
+    }
 
-    console.log("[DEBUG][extractSQL] Final SQL to execute:", patchedSQL);
+    const basePattern = /\bweather_(\d{8})\b/g;
+    const hourlyTables = getHourlyTableNames('weather', start_date, end_date);
 
-    return patchedSQL;
+    const unionSQL = hourlyTables.map(tableName => {
+        return cleanedSQL.replace(basePattern, `${dbName}.${tableName}`);
+    }).join(' UNION ALL ');
+
+    console.log("[DEBUG][extractSQL] Final SQL to execute (hourly):", unionSQL);
+    return unionSQL;
 }
 
 async function safeGetLLMCompletion(prompt) {
@@ -179,8 +205,7 @@ async function runAgent({ question, lat, lon, start_date, end_date }) {
         }
 
         const llmOutput = await safeGetLLMCompletion(rawPrompt);
-        const patchedSQL = extractSQLFromLLMOutput(llmOutput);
-
+        const patchedSQL = extractSQLFromLLMOutput(llmOutput, 'weather_dev_3', start_date, end_date);
         await redis.set(`sql:${promptHash}`, patchedSQL, { EX: 86400 }); // 1 day TTL
 
         const result = await clickhouse.query({ query: patchedSQL, format: "JSON" });
