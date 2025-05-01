@@ -520,11 +520,9 @@ router.post('/summary', async (req, res) => {
   try {
     const { lon, lat, start_date, end_date } = req.body;
 
-    // Optional: validate input here (e.g., lat/lon range, date format)
-
     const question = buildRAGQuestion({ lon, lat, start_date, end_date });
 
-    // Include start_date and end_date in the call to runAgent
+    // Include start_date and end_date
     const result = await runAgent({ question, lat, lon, start_date, end_date });
 
     if (result.status === "error") {
