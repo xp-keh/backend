@@ -149,6 +149,7 @@ function extractSQLFromLLMOutput(llmOutput, dbName = 'weather_dev_3', start_date
         .replace(/\\"/g, '"')
         .replace(/\\+/g, '')
         .replace(/FORMAT\s+JSON\s*;?/gi, '')
+        .replace(/\bLIMIT\s+\d+\b/i, '')
         .replace(/;\s*$/, '')
         .replace(/\s+/g, ' ')
         .trim();
@@ -191,6 +192,17 @@ async function safeGetLLMCompletion(prompt) {
     }
 }
 
+function sanitizeUnionSQL(rawSQL) {
+    const withoutComments = rawSQL.replace(/--.*$/gm, '');
+    const parts = withoutComments
+        .split(/UNION ALL/gi)
+        .map(p => p.trim())
+        .filter(p => /^SELECT/i.test(p));
+
+    return parts.join(" UNION ALL ");
+}
+
+
 async function runAgent({ question, lat, lon, start_date, end_date }) {
     try {
         const rawPrompt = buildPrompt(question, lat, lon, start_date, end_date);
@@ -207,7 +219,17 @@ async function runAgent({ question, lat, lon, start_date, end_date }) {
         const patchedSQL = extractSQLFromLLMOutput(llmOutput, 'weather_dev_3', start_date, end_date);
         await redis.set(`sql:${promptHash}`, patchedSQL, { EX: 86400 }); // 1 day TTL
 
-        const result = await clickhouse.query({ query: patchedSQL, format: "JSON" });
+        const cleanedSQL = sanitizeUnionSQL(patchedSQL);
+        if (!cleanedSQL.toLowerCase().startsWith("select")) {
+            throw { code: "LLM_INVALID_SQL", message: "Sanitized SQL is invalid or empty." };
+        }
+
+        console.log("[DEBUG] Cleaned SQL:", cleanedSQL);
+
+        const result = await clickhouse.query({
+            query: cleanedSQL,
+            format: "JSON"
+        });
         const data = await result.json();
 
         const answerPrompt = buildAnswerPrompt({ question, query: patchedSQL, result: data });
