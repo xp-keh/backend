@@ -11,7 +11,7 @@ function getHourlyTableNames(baseName, start, end) {
     const endMoment = moment.utc(end);
 
     while (current <= endMoment) {
-        const table = `${baseName}_${current.format("YYYYMMDD_HHmm")}`;
+        const table = `${baseName}_${current.format("YYYYMMDD_HH")}`;
         tables.push(table);
         current.add(1, 'hour');
     }
@@ -21,7 +21,7 @@ function getHourlyTableNames(baseName, start, end) {
 
 function buildPrompt(question, lat, lon) {
     const tableInfo = `
-        weather_YYYYMMDD_HHmm(
+        weather_YYYYMMDD_HH(
             location String,
             lat Float64,
             lon Float64,
@@ -35,16 +35,19 @@ function buildPrompt(question, lat, lon) {
             wind_deg Int32,
             wind_gust Float64,
             clouds Int32,
-            timestamp UInt32,
             dt DateTime64(6),
             dt_format String 
         )
-        -- Tables are partitioned hourly, e.g. weather_20250426_0000, weather_20250426_0100, etc.
+        -- Tables are partitioned hourly, e.g. weather_20250426_00, weather_20250426_01, etc.
+        -- Use "dt_format" (a formatted datetime string like '05-05-2025T23:00:00') for filtering, not "dt" or "timestamp"
         -- Use UNION ALL when querying across multiple hours.
+
+        Always filter using the "dt_format" column (which is a String in the format 'DD-MM-YYYYTHH:mm:ss').
+        Do NOT use "dt" or "timestamp".
     `;
 
     const spatialFilter = (lat != null && lon != null)
-        ? `To filter spatially, use:\ngreatCircleDistance("latitude", "longitude", ${lat}, ${lon}) < 20000`
+        ? `To filter spatially, use:\ngreatCircleDistance("latitude", "longitude", ${lat}, ${lon}) < 25000`
         : '';
 
     return `
@@ -78,9 +81,9 @@ function buildPrompt(question, lat, lon) {
             AVG("humidity") AS avg_humidity,
             AVG("wind_speed") AS avg_wind_speed,
             any("clouds") AS cloud_coverage
-        FROM weather_20250426_0000
-        WHERE greatCircleDistance("lat", "lon", -6.1944, 106.8229) < 20000
-            AND "dt" BETWEEN '2025-04-26 00:00:00' AND '2025-04-26 00:59:59'
+        FROM weather_20250426_00
+        WHERE greatCircleDistance("lat", "lon", -6.1944, 106.8229) < 25000
+            AND "dt_format" BETWEEN '2025-04-26T00:00:00' AND '2025-04-26T00:59:59'
 
         User: "What was the weather like in Surabaya between January 1 and January 2, 2024?"
         SQLQuery: SELECT
@@ -89,9 +92,9 @@ function buildPrompt(question, lat, lon) {
         AVG("wind_speed") AS avg_wind_speed,
         any("weather_main") AS weather_main,
         any("weather_description") AS weather_description
-        FROM weather_20240101_0000
-        WHERE greatCircleDistance("lat", "lon", -7.2575, 112.7521) < 20000
-        AND "dt" BETWEEN '2024-01-01 00:00:00' AND '2024-01-01 00:59:59'
+        FROM weather_20240101_00
+        WHERE greatCircleDistance("lat", "lon", -7.2575, 112.7521) < 25000
+        AND "dt_format" BETWEEN '2024-01-01T00:00:00' AND '2024-01-01T00:59:59'
         UNION ALL
         SELECT
         AVG("temp") AS avg_temp,
@@ -99,11 +102,11 @@ function buildPrompt(question, lat, lon) {
         AVG("wind_speed") AS avg_wind_speed,
         any("weather_main") AS weather_main,
         any("weather_description") AS weather_description
-        FROM weather_20240101_0100
-        WHERE greatCircleDistance("lat", "lon", -7.2575, 112.7521) < 20000
-        AND "dt" BETWEEN '2024-01-01 01:00:00' AND '2024-01-01 01:59:59'
+        FROM weather_20240101_01
+        WHERE greatCircleDistance("lat", "lon", -7.2575, 112.7521) < 25000
+        AND "dt_format" BETWEEN '2024-01-01T01:00:00' AND '2024-01-01T01:59:59'
         UNION ALL
-        -- (continue for all hourly tables up to '2024-01-02 23:59:59')
+        -- (continue for all hourly tables up to '2024-01-02T23:59:59')
 
         Question: "${question}"
     `;
@@ -132,7 +135,7 @@ Do NOT explain unit conversions.
 Keep it brief, natural, and user-friendly.`;
 }
 
-function extractSQLFromLLMOutput(llmOutput, dbName = 'weather_dev_3', start_date, end_date) {
+function extractSQLFromLLMOutput(llmOutput, dbName = 'weather_dev_1', start_date, end_date) {
     const match = llmOutput.match(/SQLQuery:\s*([\s\S]*?)(?:\s*SQLResult:|\s*Answer:|$)/);
 
     if (!match || !match[1]) {
@@ -161,7 +164,7 @@ function extractSQLFromLLMOutput(llmOutput, dbName = 'weather_dev_3', start_date
 
     const dailyTableMatch = cleanedSQL.match(/\bweather_(\d{8})\b/);
     if (!dailyTableMatch || !start_date || !end_date) {
-        const fallbackSQL = cleanedSQL.replace(/\bweather_(\d{8}_\d{4})\b/g, `${dbName}.weather_$1`);
+        const fallbackSQL = cleanedSQL.replace(/\bweather_(\d{8}_\d{2})\b/g, `${dbName}.weather_$1`);
         console.log("[DEBUG][extractSQL] Final SQL to execute (fallback):", fallbackSQL);
         return fallbackSQL;
     }
@@ -170,8 +173,18 @@ function extractSQLFromLLMOutput(llmOutput, dbName = 'weather_dev_3', start_date
     const hourlyTables = getHourlyTableNames('weather', start_date, end_date);
 
     const unionSQL = hourlyTables.map(tableName => {
-        return cleanedSQL.replace(basePattern, `${dbName}.${tableName}`);
+        const timestamp = tableName.split('_').slice(-2).join('_');
+        const momentObj = moment.utc(`${timestamp}`, 'YYYYMMDD_HH');
+
+        const dtStart = momentObj.format("DD-MM-YYYYTHH:mm:ss");
+        const dtEnd = momentObj.clone().add(59, 'minutes').add(59, 'seconds').format("DD-MM-YYYYTHH:mm:ss");
+
+        return cleanedSQL
+            .replace(basePattern, `${dbName}.${tableName}`)
+            .replace(/"dt_format"\s+BETWEEN\s+'.*?'\s+AND\s+'.*?'/,
+                `"dt_format" BETWEEN '${dtStart}' AND '${dtEnd}'`);
     }).join(' UNION ALL ');
+
 
     console.log("[DEBUG][extractSQL] Final SQL to execute (hourly):", unionSQL);
     return unionSQL;
@@ -197,7 +210,8 @@ function sanitizeUnionSQL(rawSQL) {
     const parts = withoutComments
         .split(/UNION ALL/gi)
         .map(p => p.trim())
-        .filter(p => /^SELECT/i.test(p));
+        .filter(p => /^SELECT/i.test(p))
+        .filter(p => p.includes("'") && p.split("'").length % 2 === 1);
 
     return parts.join(" UNION ALL ");
 }
@@ -216,7 +230,7 @@ async function runAgent({ question, lat, lon, start_date, end_date }) {
         }
 
         const llmOutput = await safeGetLLMCompletion(rawPrompt);
-        const patchedSQL = extractSQLFromLLMOutput(llmOutput, 'weather_dev_3', start_date, end_date);
+        const patchedSQL = extractSQLFromLLMOutput(llmOutput, 'weather_dev_1', start_date, end_date);
         await redis.set(`sql:${promptHash}`, patchedSQL, { EX: 86400 }); // 1 day TTL
 
         const cleanedSQL = sanitizeUnionSQL(patchedSQL);
@@ -231,6 +245,12 @@ async function runAgent({ question, lat, lon, start_date, end_date }) {
             format: "JSON"
         });
         const data = await result.json();
+
+        console.log("[DEBUG][ClickHouse Raw Data]", JSON.stringify(data, null, 2));
+
+        if (Array.isArray(data?.data) && data.data.length === 0) {
+            console.warn("[DEBUG][ClickHouse] No weather data returned from ClickHouse for this query.");
+        }
 
         const answerPrompt = buildAnswerPrompt({ question, query: patchedSQL, result: data });
         const finalAnswer = await safeGetLLMCompletion(answerPrompt);
