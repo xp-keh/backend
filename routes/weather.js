@@ -46,10 +46,11 @@ const cityCoordinates = {
 async function fetchWeatherData(type, city) {
   try {
     const now = moment().tz("UTC");
-    const twoDaysAgo = now.clone().subtract(1, "days");
-
-    const startTable = `weather_${twoDaysAgo.format("YYYYMMDD_HHmm")}`;
-    const endTable = `weather_${now.format("YYYYMMDD_HHmm")}`;
+    const endTime = now.clone().startOf("hour");
+    const startTime = endTime.clone().subtract(24, "hours");
+    const yesterday = now.clone().subtract(1, "days");
+    const startTable = `weather_${city}_${yesterday.format("YYYYMMDD")}`;
+    const endTable = `weather_${city}_${now.format("YYYYMMDD")}`;
 
     const tableListQuery = `
             SELECT name 
@@ -67,6 +68,7 @@ async function fetchWeatherData(type, city) {
 
     const tableData = await tableListResult.json();
     const tableNames = tableData.data.map((row) => row.name);
+    console.log(tableNames);
 
     if (tableNames.length === 0) {
       console.log("No tables found for the last 2 days.");
@@ -84,7 +86,7 @@ async function fetchWeatherData(type, city) {
                 (table) => `
                     SELECT location, temp, dt
                     FROM weather_dev_1.${table}
-                    WHERE location = '${city}'
+                    WHERE dt >= ${startTime.unix()}
                 `
               )
               .join(" UNION ALL ")}
@@ -102,7 +104,7 @@ async function fetchWeatherData(type, city) {
                 (table) => `
                     SELECT location, humidity, dt
                     FROM weather_dev_1.${table}
-                    WHERE location = '${city}'
+                    WHERE dt >= ${startTime.unix()}
                 `
               )
               .join(" UNION ALL ")}
@@ -122,7 +124,7 @@ async function fetchWeatherData(type, city) {
                 (table) => `
                     SELECT location, wind_speed, wind_deg, wind_gust, dt
                     FROM weather_dev_1.${table}
-                    WHERE location = '${city}'
+                    WHERE dt >= ${startTime.unix()}
                 `
               )
               .join(" UNION ALL ")}
@@ -130,6 +132,21 @@ async function fetchWeatherData(type, city) {
         GROUP BY location, dt
         ORDER BY dt ASC;
       `;
+      //   `
+      //   SELECT location, wind_speed, wind_deg, wind_gust, dt
+      //   FROM (
+      //       ${tableNames
+      //         .map(
+      //           (table) => `
+      //             SELECT location, wind_speed, wind_deg, wind_gust, dt
+      //             FROM weather_dev_1.${table}
+      //             WHERE location = '${city}'
+      //           `
+      //         )
+      //         .join(" UNION ALL ")}
+      //   )
+      //   ORDER BY dt ASC;
+      // `;
     } else {
       throw new Error("Invalid data type specified");
     }
