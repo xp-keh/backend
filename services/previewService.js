@@ -1,123 +1,97 @@
 require("dotenv").config();
 const moment = require("moment-timezone");
+const pool = require("../config/postgis");
 const clickhouse = require("../config/clickhouse");
 
 const SEISMIC_DB = process.env.SEISMIC_DB;
 const WEATHER_DB = process.env.WEATHER_DB;
 
 async function fetchPreviewData(start_time, end_time, longitude, latitude, radius = 25000, seismicDbName = SEISMIC_DB, weatherDbName = WEATHER_DB) {
-  console.log("[INFO] fetchPreviewData called with params:", { start_time, end_time, longitude, latitude, radius });
-
-  const formattedStartTime = start_time.replace(' ', 'T');
-  const formattedEndTime = end_time.replace(' ', 'T');
-  const searchRadius = parseFloat(radius);
   const previewLimit = 10;
+  const formattedStart = moment.utc(start_time).format('YYYY-MM-DD');
+  const formattedEnd = moment.utc(end_time).format('YYYY-MM-DD');
 
-  const seismicStartTable = `seismic_${moment.tz(formattedStartTime, "UTC").format("YYYYMMDD_HH")}`;
-  console.log("[INFO] fetchPreviewData table:", { seismicStartTable });
-  const seismicEndTable = `seismic_${moment.tz(formattedEndTime, "UTC").format("YYYYMMDD_HH")}`;
-  console.log("[INFO] fetchPreviewData table:", { seismicEndTable });
-  const weatherStartTable = `weather_${moment.tz(formattedStartTime, "UTC").format("YYYYMMDD_HH")}`;
-  console.log("[INFO] fetchPreviewData table:", { weatherStartTable });
-  const weatherEndTable = `weather_${moment.tz(formattedEndTime, "UTC").format("YYYYMMDD_HH")}`;
-  console.log("[INFO] fetchPreviewData table:", { weatherEndTable });
+  console.log("[INFO] Fetching relevant tables from PostGIS within spatial and temporal bounds...");
 
-  const findTablesQuery = (dbName, startTable, endTable) => `
-    SELECT name 
-    FROM system.tables 
-    WHERE database = '${dbName}' 
-      AND name >= '${startTable}' 
-      AND name <= '${endTable}'
-    ORDER BY name ASC;
-  `;
+  const { rows: catalogRows } = await pool.query(`
+    SELECT table_name, data_type
+    FROM data_catalog
+    WHERE date BETWEEN $1 AND $2
+      AND ST_DWithin(geom, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5)
+  `, [formattedStart, formattedEnd, longitude, latitude, radius]);
 
-  console.log("[INFO] Query:", { query: findTablesQuery(seismicDbName, seismicStartTable, seismicEndTable) });
-  console.log("[INFO] Query:", { query: findTablesQuery(weatherDbName, weatherStartTable, weatherEndTable) });
+  const seismicTables = catalogRows.filter(r => r.data_type === 'seismic').map(r => r.table_name);
+  const weatherTables = catalogRows.filter(r => r.data_type === 'weather').map(r => r.table_name);
 
-  const seismicTablesResult = await clickhouse.query({ query: findTablesQuery(seismicDbName, seismicStartTable, seismicEndTable), format: 'JSON' });
-  const weatherTablesResult = await clickhouse.query({ query: findTablesQuery(weatherDbName, weatherStartTable, weatherEndTable), format: 'JSON' });
+  console.log(`[INFO] Found ${seismicTables.length} seismic tables, ${weatherTables.length} weather tables`);
 
-  const seismicTables = (await seismicTablesResult.json()).data.map(row => row.name);
-  const weatherTables = (await weatherTablesResult.json()).data.map(row => row.name);
-
-  console.log(`[INFO] fetch tables information complete: ${seismicTables}`);
-  console.log(`[INFO] fetch tables information complete: ${weatherTables}`);
-
-  let previewData = [];
-
-  let allWeatherData = [];
+  const allWeatherData = [];
   for (const weatherTable of weatherTables) {
+    if (allWeatherData.length >= previewLimit) break;
+
     const weatherQuery = `
       SELECT 
         dt_format,
         lat, lon, location, temp, feels_like, pressure, humidity, wind_speed, wind_deg, wind_gust, clouds
       FROM ${weatherDbName}.${weatherTable}
-      WHERE greatCircleDistance(lat, lon, ${latitude}, ${longitude}) < ${searchRadius}
       ORDER BY dt_format ASC
+      LIMIT ${previewLimit - allWeatherData.length}
     `;
     const weatherResult = await clickhouse.query({ query: weatherQuery, format: "JSON" });
     const weatherData = (await weatherResult.json()).data;
+
     allWeatherData.push(...weatherData);
+    if (allWeatherData.length >= previewLimit) break;
   }
 
-  for (const seismicTable of seismicTables) {
-    const seismicQuery = `
-      SELECT 
-        toDateTime64(dt, 6) AS dt,
-        lat,
-        lon,
-        network,
-        station,
-        maxIf(data, channel = 'BHE') AS BHE,
-        maxIf(data, channel = 'BHN') AS BHN,
-        maxIf(data, channel = 'BHZ') AS BHZ
-      FROM ${seismicDbName}.${seismicTable}
-      WHERE greatCircleDistance(lat, lon, ${latitude}, ${longitude}) < ${searchRadius}
-      GROUP BY 
-        dt,
-        lat,
-        lon,
-        network,
-        station
-      HAVING countDistinct(channel) = 3
-      ORDER BY dt ASC
-    `;
+  let previewData = [];
 
-    const seismicResult = await clickhouse.query({ query: seismicQuery, format: "JSON" });
-    const seismicData = (await seismicResult.json()).data;
+  for (const weather of allWeatherData) {
+    const weatherTime = moment.utc(weather.dt_format, 'DD-MM-YYYYTHH:mm:ss');
 
-    for (const seismic of seismicData) {
-      const seismicMoment = moment.utc(seismic.dt);
-
-      const matchedWeather = allWeatherData.reduce((closest, w) => {
-        const weatherMoment = moment.utc(w.dt_format, 'DD-MM-YYYYTHH:mm:ss');
-        const diff = Math.abs(seismicMoment.diff(weatherMoment, 'seconds'));
-        if (diff <= 900 && (!closest || diff < Math.abs(seismicMoment.diff(moment.utc(closest.dt_format, 'DD-MM-YYYYTHH:mm:ss'), 'seconds')))) {
-          return w;
-        }
-        return closest;
-      }, null);
-
-      previewData.push({
-        Timestamp: seismic.dt,
-        Lat: seismic.lat,
-        Lon: seismic.lon,
-        Network: seismic.network,
-        Station: seismic.station,
-        BHE: seismic.BHE,
-        BHN: seismic.BHN,
-        BHZ: seismic.BHZ,
-        Temprature: matchedWeather?.temp ?? null,
-        Humidity: matchedWeather?.humidity ?? null,
-        Pressure: matchedWeather?.pressure ?? null,
-        Wind: matchedWeather?.wind_speed ?? null,
-        Clouds: matchedWeather?.clouds ?? null
-      });
-
-      if (previewData.length >= previewLimit) break;
+    let matchedSeismic = null;
+    for (const seismicTable of seismicTables) {
+      const seismicQuery = `
+        SELECT 
+          toDateTime64(dt, 6) AS dt,
+          lat,
+          lon,
+          network,
+          station,
+          maxIf(data, channel = 'BHE') AS BHE,
+          maxIf(data, channel = 'BHN') AS BHN,
+          maxIf(data, channel = 'BHZ') AS BHZ
+        FROM ${seismicDbName}.${seismicTable}
+        WHERE dt >= '${weatherTime.clone().subtract(15, 'minutes').format("YYYY-MM-DD HH:mm:ss")}'
+          AND dt <= '${weatherTime.clone().add(15, 'minutes').format("YYYY-MM-DD HH:mm:ss")}'
+        GROUP BY dt, lat, lon, network, station
+        HAVING countDistinct(channel) = 3
+        ORDER BY dt ASC
+        LIMIT 1
+      `;
+      const seismicResult = await clickhouse.query({ query: seismicQuery, format: "JSON" });
+      const seismicData = (await seismicResult.json()).data;
+      if (seismicData.length > 0) {
+        matchedSeismic = seismicData[0];
+        break; // Stop after finding first match
+      }
     }
 
-    if (previewData.length >= previewLimit) break;
+    previewData.push({
+      Timestamp: matchedSeismic?.dt ?? null,
+      Lat: matchedSeismic?.lat ?? null,
+      Lon: matchedSeismic?.lon ?? null,
+      Network: matchedSeismic?.network ?? null,
+      Station: matchedSeismic?.station ?? null,
+      BHE: matchedSeismic?.BHE ?? null,
+      BHN: matchedSeismic?.BHN ?? null,
+      BHZ: matchedSeismic?.BHZ ?? null,
+      Temperature: weather.temp ?? null,
+      Humidity: weather.humidity ?? null,
+      Pressure: weather.pressure ?? null,
+      Wind: weather.wind_speed ?? null,
+      Clouds: weather.clouds ?? null
+    });
   }
 
   console.log(`[INFO] fetchPreviewData completed. Returning ${previewData.length} preview rows.`);

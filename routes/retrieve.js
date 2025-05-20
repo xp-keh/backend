@@ -45,20 +45,26 @@ router.get("/preview", async (req, res) => {
 
 router.get("/download", async (req, res) => {
   try {
-    const { start_time, end_time, longitude, latitude, radius } = req.query;
-    const { finalData } = await fetchData(start_time, end_time, longitude, latitude, radius, null);
-    if (finalData.length === 0) return res.status(404).json({ error: "No data found" });
+    const { start_time, end_time, longitude, latitude, radius, city } = req.query;
+    const { joinedData } = await fetchData(start_time, end_time, longitude, latitude, radius);
+
+    if (joinedData.length === 0) return res.status(404).json({ error: "No data found" });
 
     const json2csvParser = new Parser();
-    const csv = json2csvParser.parse(finalData);
+    const csv = json2csvParser.parse(joinedData);
     const downloadsDir = path.join(__dirname, "../public/downloads");
 
     if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
 
-    const filePath = path.join(downloadsDir, "merged_data.csv");
+    const cityLabel = (city || "location").toLowerCase().replace(/\s+/g, "_");
+    const startDateStr = moment.utc(start_time).format("YYYYMMDD_HHmm");
+    const endDateStr = moment.utc(end_time).format("YYYYMMDD_HHmm");
+    const filename = `seismic_weather_${cityLabel}_${startDateStr}_to_${endDateStr}.csv`;
 
+    const filePath = path.join(downloadsDir, filename);
     fs.writeFileSync(filePath, csv);
-    res.download(filePath, "merged_data.csv", (err) => {
+
+    res.download(filePath, filename, (err) => {
       if (err) console.error("Error sending file:", err);
       fs.unlinkSync(filePath);
     });

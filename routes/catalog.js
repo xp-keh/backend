@@ -9,7 +9,7 @@ router.post("/register", async (req, res) => {
     const {
         table_name,
         data_type, // 'seismic' or 'weather'
-        station_id, // optional for seismic
+        station_id, // for seismic
         date, // e.g. '2025-05-18'
         longitude,
         latitude,

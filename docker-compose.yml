@@ -16,8 +16,6 @@ services:
     depends_on:
       - redis
     restart: always
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:${PORT}/health"]
 
   redis:
     image: redis:latest
