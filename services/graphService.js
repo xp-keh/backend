@@ -1,33 +1,35 @@
 require("dotenv").config();
 
 const moment = require("moment-timezone");
+const pool = require("../config/postgis");
 const clickhouse = require("../config/clickhouse");
 
 const SEISMIC_DB = process.env.SEISMIC_DB;
 const WEATHER_DB = process.env.WEATHER_DB;
 const SEARCH_RADIUS = 25000;
 
+async function relevantTables(data_type, start_time, end_time, latitude, longitude, radius) {
+  const formattedStart = moment.utc(start_time).format("YYYY-MM-DD");
+  const formattedEnd = moment.utc(end_time).format("YYYY-MM-DD");
 
-async function listTables(database, startTime, endTime, prefix) {
-  const startTable = `${prefix}_${moment.tz(startTime, "UTC").format("YYYYMMDD_HH")}`;
-  const endTable = `${prefix}_${moment.tz(endTime, "UTC").format("YYYYMMDD_HH")}`;
+  const { rows } = await pool.query(`
+    SELECT table_name 
+    FROM data_catalog 
+    WHERE data_type = $1 
+      AND date BETWEEN $2 AND $3
+      AND ST_DWithin(
+        geom,
+        ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography,
+        $6
+      )
+    ORDER BY table_name ASC;
+  `, [data_type, formattedStart, formattedEnd, longitude, latitude, radius]);
 
-  const query = `
-    SELECT name 
-    FROM system.tables 
-    WHERE database = '${database}' 
-      AND name >= '${startTable}' 
-      AND name <= '${endTable}'
-    ORDER BY name ASC;
-  `;
-
-  const result = await clickhouse.query({ query, format: "JSON" });
-  const json = await result.json();
-  return json.data.map(row => row.name);
+  return rows.map(r => r.table_name);
 }
 
 async function getSeismicGraphData({ start_time, end_time, latitude, longitude }) {
-  const tableNames = await listTables(SEISMIC_DB, start_time, end_time, "seismic");
+  const tableNames = await relevantTables('seismic', start_time, end_time, latitude, longitude, SEARCH_RADIUS);
 
   const queryTasks = tableNames.map(async table => {
     const query = `
@@ -39,8 +41,7 @@ async function getSeismicGraphData({ start_time, end_time, latitude, longitude }
         maxIf(data, channel = 'BHZ') AS BHZ
       FROM ${SEISMIC_DB}.${table}
       WHERE 
-        greatCircleDistance(lat, lon, ${latitude}, ${longitude}) < ${SEARCH_RADIUS}
-        AND dt BETWEEN toDateTime('${start_time}') AND toDateTime('${end_time}')
+        dt BETWEEN toDateTime('${start_time}') AND toDateTime('${end_time}')
       GROUP BY dt, lat, lon, network, station
       HAVING countDistinct(channel) = 3
       ORDER BY dt ASC;
@@ -70,7 +71,7 @@ async function getSeismicGraphData({ start_time, end_time, latitude, longitude }
 }
 
 async function getWeatherGraphData({ start_time, end_time, latitude, longitude }) {
-  const tableNames = await listTables(WEATHER_DB, start_time, end_time, "weather");
+  const tableNames = await relevantTables('weather', start_time, end_time, latitude, longitude, SEARCH_RADIUS);
 
   const queryTasks = tableNames.map(async table => {
     const query = `
@@ -86,8 +87,7 @@ async function getWeatherGraphData({ start_time, end_time, latitude, longitude }
         avg(clouds) AS avg_clouds
       FROM ${WEATHER_DB}.${table}
       WHERE 
-        greatCircleDistance(lat, lon, ${latitude}, ${longitude}) < ${SEARCH_RADIUS}
-        AND dt BETWEEN toDateTime('${start_time}') AND toDateTime('${end_time}')
+        dt BETWEEN toDateTime('${start_time}') AND toDateTime('${end_time}')
       GROUP BY dt_format
       ORDER BY dt_format ASC;
     `;
