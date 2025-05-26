@@ -12,7 +12,7 @@ const clickhouse = createClient({
   database: process.env.CLICKHOUSE_DB_WEATHER,
 });
 
-const API_KEY = "7794c2f0e827d159325b614c8b7945a5";
+const API_KEY = process.env.OPENWEATHER_API_KEY;
 const BASE_URL_h = "https://pro.openweathermap.org/data/2.5/forecast/hourly";
 const BASE_URL_d = "https://pro.openweathermap.org/data/2.5/forecast/daily";
 
