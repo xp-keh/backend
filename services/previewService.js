@@ -73,7 +73,7 @@ async function fetchPreviewData(start_time, end_time, longitude, latitude, radiu
       const seismicData = (await seismicResult.json()).data;
       if (seismicData.length > 0) {
         matchedSeismic = seismicData[0];
-        break; // Stop after finding first match
+        break;
       }
     }
 

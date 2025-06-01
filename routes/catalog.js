@@ -8,9 +8,9 @@ const moment = require("moment-timezone");
 router.post("/register", async (req, res) => {
     const {
         table_name,
-        data_type, // 'seismic' or 'weather'
-        station_id, // for seismic
-        date, // e.g. '2025-05-18'
+        data_type,
+        station_id,
+        date,
         longitude,
         latitude,
     } = req.body;
