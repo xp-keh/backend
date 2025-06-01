@@ -40,14 +40,14 @@ async function fetchData(start_time, end_time, longitude, latitude, radius = 250
       FROM
       (
           SELECT
-              dt_format,
+              parseDateTimeBestEffort(timestamp) AS parsed_timestamp,
               station,
               anyIf(data, channel = 'BHE') AS BHE,
               anyIf(data, channel = 'BHN') AS BHN,
               anyIf(data, channel = 'BHZ') AS BHZ
           FROM ${SEISMIC_DB}.${seismicTable}
-          WHERE dt_format BETWEEN toUnixTimestamp(toDateTime('${start_time}')) AND toUnixTimestamp(toDateTime('${end_time}'))
-          GROUP BY dt_format, station
+          WHERE parseDateTimeBestEffort(timestamp) BETWEEN toDateTime('${start_time}') AND toDateTime('${end_time}')
+          GROUP BY parsed_timestamp, station
       ) AS s
       ASOF INNER JOIN
       (
@@ -57,11 +57,11 @@ async function fetchData(start_time, end_time, longitude, latitude, radius = 250
               wind_speed,
               wind_deg AS wind_degree,
               location,
-              dt
+              parseDateTimeBestEffort(timestamp) AS parsed_timestamp
           FROM ${WEATHER_DB}.${weatherTable}
-          WHERE dt BETWEEN toUnixTimestamp(toDateTime('${start_time}')) AND toUnixTimestamp(toDateTime('${end_time}'))
+          WHERE parseDateTimeBestEffort(timestamp) BETWEEN toDateTime('${start_time}') AND toDateTime('${end_time}')
       ) AS w
-      ON s.station = w.location AND s.dt_format >= w.dt
+      ON s.station = w.location AND s.parsed_timestamp >= w.parsed_timestamp
 `;
 
 
