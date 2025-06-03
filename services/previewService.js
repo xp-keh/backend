@@ -23,6 +23,9 @@ async function fetchPreviewData(start_time, end_time, longitude, latitude, radiu
   const seismicTables = catalogRows.filter(r => r.data_type === 'seismic').map(r => r.table_name);
   const weatherTables = catalogRows.filter(r => r.data_type === 'weather').map(r => r.table_name);
 
+  console.log(`[INFO] Found seismic tables, ${seismicTables}`);
+  console.log(`[INFO] Found weather tables, ${weatherTables}`);
+
   console.log(`[INFO] Found ${seismicTables.length} seismic tables, ${weatherTables.length} weather tables`);
 
   const allWeatherData = [];
@@ -31,10 +34,21 @@ async function fetchPreviewData(start_time, end_time, longitude, latitude, radiu
 
     const weatherQuery = `
       SELECT 
-        dt_format,
-        lat, lon, location, temp, feels_like, pressure, humidity, wind_speed, wind_deg, wind_gust, clouds
+        dt, 
+        timestamp,
+        lat,
+        lon,
+        location,
+        temp,
+        feels_like,
+        pressure,
+        humidity,
+        wind_speed,
+        wind_deg,
+        wind_gust,
+        clouds
       FROM ${weatherDbName}.${weatherTable}
-      ORDER BY dt_format ASC
+      ORDER BY dt ASC
       LIMIT ${previewLimit - allWeatherData.length}
     `;
     const weatherResult = await clickhouse.query({ query: weatherQuery, format: "JSON" });
@@ -47,13 +61,14 @@ async function fetchPreviewData(start_time, end_time, longitude, latitude, radiu
   let previewData = [];
 
   for (const weather of allWeatherData) {
-    const weatherTime = moment.utc(weather.dt_format, 'DD-MM-YYYYTHH:mm:ss');
+    const weatherUnixTime = weather.dt
 
     let matchedSeismic = null;
     for (const seismicTable of seismicTables) {
       const seismicQuery = `
         SELECT 
-          toDateTime64(dt, 6) AS dt,
+          dt_format,
+          toDateTime64(dt / 1000, 3) AS dt_utc,
           lat,
           lon,
           network,
@@ -62,11 +77,10 @@ async function fetchPreviewData(start_time, end_time, longitude, latitude, radiu
           maxIf(data, channel = 'BHN') AS BHN,
           maxIf(data, channel = 'BHZ') AS BHZ
         FROM ${seismicDbName}.${seismicTable}
-        WHERE dt >= '${weatherTime.clone().subtract(15, 'minutes').format("YYYY-MM-DD HH:mm:ss")}'
-          AND dt <= '${weatherTime.clone().add(15, 'minutes').format("YYYY-MM-DD HH:mm:ss")}'
-        GROUP BY dt, lat, lon, network, station
+        WHERE dt_format BETWEEN ${weatherUnixTime - 240} AND ${weatherUnixTime + 240}
+        GROUP BY dt_format, dt_utc, lat, lon, network, station
         HAVING countDistinct(channel) = 3
-        ORDER BY dt ASC
+        ORDER BY dt_format ASC
         LIMIT 1
       `;
       const seismicResult = await clickhouse.query({ query: seismicQuery, format: "JSON" });
@@ -78,7 +92,7 @@ async function fetchPreviewData(start_time, end_time, longitude, latitude, radiu
     }
 
     previewData.push({
-      Timestamp: matchedSeismic?.dt ?? null,
+      Timestamp: weather?.timestamp ?? null,
       Lat: matchedSeismic?.lat ?? null,
       Lon: matchedSeismic?.lon ?? null,
       Network: matchedSeismic?.network ?? null,
