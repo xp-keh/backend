@@ -57,9 +57,7 @@ router.get("/download", async (req, res) => {
     if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
 
     const cityLabel = (city || "location").toLowerCase().replace(/\s+/g, "_");
-    const startDateStr = moment.utc(start_time).format("YYYYMMDD_HHmm");
-    const endDateStr = moment.utc(end_time).format("YYYYMMDD_HHmm");
-    const filename = `seismic_weather_${cityLabel}_${startDateStr}_to_${endDateStr}.csv`;
+    const filename = `seismic_weather_${cityLabel}_${start_time}_to_${end_time}.csv`;
 
     const filePath = path.join(downloadsDir, filename);
     fs.writeFileSync(filePath, csv);

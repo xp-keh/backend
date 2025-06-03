@@ -32,9 +32,6 @@ async function fetchData(start_time, end_time, longitude, latitude, radius = 250
 
     console.log(`[INFO] Joining ${weatherTable} with ${seismicTable}...`);
 
-    console.log(`Start time:`, start_time)
-    console.log(`End time:`, end_time)
-
     const joinQuery = `
       SELECT *
       FROM
@@ -52,14 +49,15 @@ async function fetchData(start_time, end_time, longitude, latitude, radius = 250
       ASOF INNER JOIN
       (
           SELECT
+              parseDateTimeBestEffort(timestamp) AS timestamp,
               temp AS temprature,
               humidity,
               wind_speed,
               wind_deg AS wind_degree,
               location,
-              parseDateTimeBestEffort(timestamp) AS parsed_timestamp
+              dt
           FROM ${WEATHER_DB}.${weatherTable}
-          WHERE parseDateTimeBestEffort(timestamp) BETWEEN toDateTime('${start_time}') AND toDateTime('${end_time}')
+          WHERE dt BETWEEN toUnixTimestamp(toDateTime('${start_time}')) AND toUnixTimestamp(toDateTime('${end_time}'))
       ) AS w
       ON s.station = w.location AND s.dt_format >= w.dt
 `;
