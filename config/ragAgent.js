@@ -5,118 +5,51 @@ const crypto = require('crypto');
 const redis = require('../config/redis');
 const moment = require('moment');
 
-function getHourlyTableNames(baseName, start, end) {
-    const tables = [];
-    let current = moment.utc(start);
-    const endMoment = moment.utc(end);
+async function getWeatherTableNamesFromPostGIS(start_time, end_time, longitude, latitude, radius = 25000) {
+    const formattedStart = moment.utc(start_time).format('YYYY-MM-DD');
+    const formattedEnd = moment.utc(end_time).format('YYYY-MM-DD');
 
-    while (current <= endMoment) {
-        const table = `${baseName}_${current.format("YYYYMMDD_HH")}`;
-        tables.push(table);
-        current.add(1, 'hour');
+    const client = await pool.connect();
+    try {
+        const { rows } = await pool.query(`
+                SELECT table_name
+                FROM data_catalog
+                WHERE date BETWEEN $1 AND $2
+                AND data_type = 'weather'
+                AND ST_DWithin(geom, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5)
+            `, [formattedStart, formattedEnd, longitude, latitude, radius]);
+        return rows.map(row => row.table_name);
+    } catch (error) {
+        console.error("[ERROR][PostGIS] Failed to fetch table names.", error);
+        throw error;
+    } finally {
+        client.release();
     }
-
-    return tables;
 }
 
-function buildPrompt(question, lat, lon) {
-    const tableInfo = `
-        weather_YYYYMMDD_HH(
-            location String,
-            lat Float64,
-            lon Float64,
-            temp Float64,
-            feels_like Float64,
-            temp_min Float64,
-            temp_max Float64,
-            pressure Int32,
-            humidity Int32,
-            wind_speed Float64,
-            wind_deg Int32,
-            wind_gust Float64,
-            clouds Int32,
-            dt DateTime64(6),
-            dt_format String 
-        )
-        -- Tables are partitioned hourly, e.g. weather_20250426_00, weather_20250426_01, etc.
-        -- Use "dt_format" (a formatted datetime string like '05-05-2025T23:00:00') for filtering, not "dt" or "timestamp"
-        -- Use UNION ALL when querying across multiple hours.
-
-        Always filter using the "dt_format" column (which is a String in the format 'DD-MM-YYYYTHH:mm:ss').
-        Do NOT use "dt" or "timestamp".
-    `;
-
-    const spatialFilter = (lat != null && lon != null)
-        ? `To filter spatially, use:\ngreatCircleDistance("latitude", "longitude", ${lat}, ${lon}) < 25000`
-        : '';
-
-    return `
-        Always use the exact following format. Do NOT skip or modify labels:
-        Question: "..."
-        SQLQuery: SELECT ... ← do NOT wrap this in quotes
-        SQLResult: "..."  ← leave empty or fake value if needed
-        Answer: "..."  ← your best guess based on the SQLResult
-
-        You are a ClickHouse SQL expert. Given an input question, first create a syntactically correct ClickHouse SQL query to run.
-
-        Use only the following tables:
-        ${tableInfo}
-
-        Wrap each column name in double quotes. Use only the columns listed in the schema.
-        Avoid hallucinating columns or referencing non-existent tables.
-
-        The column "geom" is a WKT geometry.
-        ${spatialFilter}
-
-        The user wants a maximum of 100 results unless specified otherwise.
-
-        Given a user query, generate an optimized SQL query for ClickHouse.
-        Ensure you use aggregate functions like AVG, MAX, MIN when retrieving numerical data.
-
-        Example:
-
-        User: "What was the weather like in Jakarta on April 26, 2025 at midnight?"
-        SQLQuery: SELECT 
-            AVG("temp") AS avg_temp,
-            AVG("humidity") AS avg_humidity,
-            AVG("wind_speed") AS avg_wind_speed,
-            any("clouds") AS cloud_coverage
-        FROM weather_20250426_00
-        WHERE greatCircleDistance("lat", "lon", -6.1944, 106.8229) < 25000
-            AND "dt_format" BETWEEN '2025-04-26T00:00:00' AND '2025-04-26T00:59:59'
-
-        User: "What was the weather like in Surabaya between January 1 and January 2, 2024?"
-        SQLQuery: SELECT
-        AVG("temp") AS avg_temp,
-        AVG("humidity") AS avg_humidity,
-        AVG("wind_speed") AS avg_wind_speed,
-        any("weather_main") AS weather_main,
-        any("weather_description") AS weather_description
-        FROM weather_20240101_00
-        WHERE greatCircleDistance("lat", "lon", -7.2575, 112.7521) < 25000
-        AND "dt_format" BETWEEN '2024-01-01T00:00:00' AND '2024-01-01T00:59:59'
-        UNION ALL
-        SELECT
-        AVG("temp") AS avg_temp,
-        AVG("humidity") AS avg_humidity,
-        AVG("wind_speed") AS avg_wind_speed,
-        any("weather_main") AS weather_main,
-        any("weather_description") AS weather_description
-        FROM weather_20240101_01
-        WHERE greatCircleDistance("lat", "lon", -7.2575, 112.7521) < 25000
-        AND "dt_format" BETWEEN '2024-01-01T01:00:00' AND '2024-01-01T01:59:59'
-        UNION ALL
-        -- (continue for all hourly tables up to '2024-01-02T23:59:59')
-
-        Question: "${question}"
-    `;
+async function getCityNameFromPostGIS(lon, lat) {
+    const client = await pool.connect();
+    try {
+        const { rows } = await client.query(`
+            SELECT city 
+            FROM cities
+            WHERE longitude = $1 AND latitude = $2
+            LIMIT 1
+        `, [lon, lat]);
+        return rows.length > 0 ? rows[0].city : null;
+    } catch (error) {
+        console.error("[ERROR][PostGIS] Failed to fetch city name.", error);
+        throw error;
+    } finally {
+        client.release();
+    }
 }
 
 function hashPrompt(prompt) {
     return crypto.createHash('sha256').update(prompt).digest('hex');
 }
 
-function buildAnswerPrompt({ question, query, result }) {
+function buildAnswerPrompt({ question, query, result, lat, lon, start_date, end_date, cityName }) {
     let safeResult;
     try {
         safeResult = JSON.stringify(result);
@@ -124,70 +57,24 @@ function buildAnswerPrompt({ question, query, result }) {
         safeResult = '[Unserializable result]';
     }
 
+    const locationInfo = cityName
+        ? `The weather in ${cityName} (${lat}, ${lon})`
+        : `The weather at coordinates (${lat}, ${lon})`;
+
+    const dateRange = moment.utc(start_date).format("DD-MM-YYYY HH:mm")
+        + " to "
+        + moment.utc(end_date).format("DD-MM-YYYY HH:mm");
+
     return `Given this user question, SQL query, and result:\n
-Question: ${question}
-SQL Query: ${query}
-SQL Result: ${safeResult}
+        Question: ${question}
+        SQL Query: ${query}
+        SQL Result: ${safeResult}
 
-Please provide a short, simple summary of the weather based on the result.
-Only mention relevant values like temperature (in Kelvin), humidity (in %), and wind speed (in m/s) if available.
-Do NOT explain unit conversions. 
-Keep it brief, natural, and user-friendly.`;
-}
+        Please summarize the weather data as follows:
+        "${locationInfo} from ${dateRange} showed approximately [avg_temp] K temperature, [avg_humidity]% humidity, and [avg_wind_speed] m/s wind speed, with cloud coverage around [cloud_coverage]%."
 
-function extractSQLFromLLMOutput(llmOutput, dbName = 'weather_dev_1', start_date, end_date) {
-    const match = llmOutput.match(/SQLQuery:\s*([\s\S]*?)(?:\s*SQLResult:|\s*Answer:|$)/);
-
-    if (!match || !match[1]) {
-        console.error("[ERROR][extractSQL] Failed to extract SQL from LLM output.\n", llmOutput);
-        throw new Error("SQLQuery not found in LLM output.");
-    }
-
-    let rawSQL = match[1];
-
-    console.log("[DEBUG][extractSQL] Raw SQL from LLM:", rawSQL);
-
-    const cleanedSQL = rawSQL
-        .replace(/\\n/g, ' ')
-        .replace(/\\"/g, '"')
-        .replace(/\\+/g, '')
-        .replace(/FORMAT\s+JSON\s*;?/gi, '')
-        .replace(/\bLIMIT\s+\d+\b/i, '')
-        .replace(/;\s*$/, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    if (!/^SELECT\s/i.test(cleanedSQL)) {
-        console.error("[ERROR][extractSQL] Invalid SQL after cleanup:\n", cleanedSQL);
-        throw new Error("Cleaned SQL does not start with SELECT.");
-    }
-
-    const dailyTableMatch = cleanedSQL.match(/\bweather_(\d{8})\b/);
-    if (!dailyTableMatch || !start_date || !end_date) {
-        const fallbackSQL = cleanedSQL.replace(/\bweather_(\d{8}_\d{2})\b/g, `${dbName}.weather_$1`);
-        console.log("[DEBUG][extractSQL] Final SQL to execute (fallback):", fallbackSQL);
-        return fallbackSQL;
-    }
-
-    const basePattern = /\bweather_(\d{8})\b/g;
-    const hourlyTables = getHourlyTableNames('weather', start_date, end_date);
-
-    const unionSQL = hourlyTables.map(tableName => {
-        const timestamp = tableName.split('_').slice(-2).join('_');
-        const momentObj = moment.utc(`${timestamp}`, 'YYYYMMDD_HH');
-
-        const dtStart = momentObj.format("DD-MM-YYYYTHH:mm:ss");
-        const dtEnd = momentObj.clone().add(59, 'minutes').add(59, 'seconds').format("DD-MM-YYYYTHH:mm:ss");
-
-        return cleanedSQL
-            .replace(basePattern, `${dbName}.${tableName}`)
-            .replace(/"dt_format"\s+BETWEEN\s+'.*?'\s+AND\s+'.*?'/,
-                `"dt_format" BETWEEN '${dtStart}' AND '${dtEnd}'`);
-    }).join(' UNION ALL ');
-
-
-    console.log("[DEBUG][extractSQL] Final SQL to execute (hourly):", unionSQL);
-    return unionSQL;
+        Please fill in the brackets with appropriate values from the result. Keep it concise and user-friendly.
+    `;
 }
 
 async function safeGetLLMCompletion(prompt) {
@@ -205,43 +92,47 @@ async function safeGetLLMCompletion(prompt) {
     }
 }
 
-function sanitizeUnionSQL(rawSQL) {
-    const withoutComments = rawSQL.replace(/--.*$/gm, '');
-    const parts = withoutComments
-        .split(/UNION ALL/gi)
-        .map(p => p.trim())
-        .filter(p => /^SELECT/i.test(p))
-        .filter(p => p.includes("'") && p.split("'").length % 2 === 1);
-
-    return parts.join(" UNION ALL ");
-}
-
-
 async function runAgent({ question, lat, lon, start_date, end_date }) {
     try {
-        const rawPrompt = buildPrompt(question, lat, lon, start_date, end_date);
-        const promptHash = hashPrompt(rawPrompt);
-
-        const cachedSQL = await redis.get(`sql:${promptHash}`);
-        const cachedAnswer = await redis.get(`answer:${promptHash}`);
-        if (cachedSQL && cachedAnswer) {
-            console.log('[CACHE][Hit] Using cached result for prompt.');
-            return JSON.parse(cachedAnswer); // already has { status, message }
+        const tableNames = await getWeatherTableNamesFromPostGIS(start_date, end_date, lon, lat);
+        if (tableNames.length === 0) {
+            throw { code: "NO_DATA_FOUND", message: "No relevant tables found in PostGIS." };
         }
 
-        const llmOutput = await safeGetLLMCompletion(rawPrompt);
-        const patchedSQL = extractSQLFromLLMOutput(llmOutput, 'weather_dev_1', start_date, end_date);
-        await redis.set(`sql:${promptHash}`, patchedSQL, { EX: 86400 }); // 1 day TTL
+        const cityName = await getCityNameFromPostGIS(lon, lat);
+        console.log("[DEBUG] Nearest city:", cityName);
 
-        const cleanedSQL = sanitizeUnionSQL(patchedSQL);
-        if (!cleanedSQL.toLowerCase().startsWith("select")) {
-            throw { code: "LLM_INVALID_SQL", message: "Sanitized SQL is invalid or empty." };
-        }
+        const dbName = 'weather_dev_1';
+        const unionSQL = tableNames.map(tableName => {
+            return `
+                SELECT 
+                    "temp", 
+                    "humidity", 
+                    "wind_speed", 
+                    "clouds", 
+                    "timestamp"
+                FROM ${dbName}.${tableName}
+                WHERE "timestamp" BETWEEN '${moment.utc(start_date).format("DD-MM-YYYYTHH:mm:ss")}' 
+                AND '${moment.utc(end_date).format("DD-MM-YYYYTHH:mm:ss")}'
+            `;
+        }).join(' UNION ALL ');
 
-        console.log("[DEBUG] Cleaned SQL:", cleanedSQL);
+        const finalSQL = `
+            SELECT
+                AVG("temp") AS avg_temp,
+                AVG("humidity") AS avg_humidity,
+                AVG("wind_speed") AS avg_wind_speed,
+                any("clouds") AS cloud_coverage
+            FROM (
+                ${unionSQL}
+            )
+            LIMIT 100
+        `;
+
+        console.log("[DEBUG] Final SQL to execute:", finalSQL);
 
         const result = await clickhouse.query({
-            query: cleanedSQL,
+            query: finalSQL,
             format: "JSON"
         });
         const data = await result.json();
@@ -252,7 +143,16 @@ async function runAgent({ question, lat, lon, start_date, end_date }) {
             console.warn("[DEBUG][ClickHouse] No weather data returned from ClickHouse for this query.");
         }
 
-        const answerPrompt = buildAnswerPrompt({ question, query: patchedSQL, result: data });
+        const answerPrompt = buildAnswerPrompt({
+            question,
+            query: finalSQL,
+            result: data,
+            lat,
+            lon,
+            start_date,
+            end_date,
+            cityName
+        });
         const finalAnswer = await safeGetLLMCompletion(answerPrompt);
 
         const answerPayload = {
@@ -260,13 +160,13 @@ async function runAgent({ question, lat, lon, start_date, end_date }) {
             message: finalAnswer
         };
 
+        const promptHash = hashPrompt(answerPrompt);
         await redis.set(`answer:${promptHash}`, JSON.stringify(answerPayload), { EX: 86400 });
 
         return answerPayload;
     } catch (error) {
         console.error("[ERROR][runAgent]", error);
 
-        // Custom error mapping
         let userMessage = "Something went wrong.";
         switch (error.code) {
             case 'LLM_EMPTY_RESPONSE':

@@ -31,21 +31,30 @@ async function relevantTables(data_type, start_time, end_time, latitude, longitu
 async function getSeismicGraphData({ start_time, end_time, latitude, longitude }) {
   const tableNames = await relevantTables('seismic', start_time, end_time, latitude, longitude, SEARCH_RADIUS);
 
+  const startUnixTime = moment.utc(start_time).unix();
+  const endUnixTime = moment.utc(end_time).unix();
+
+  const thirtyMinutesLater = startUnixTime + 1800;
+  const adjustedEndTime = Math.min(endUnixTime, thirtyMinutesLater);
+
+  console.log(`[DEBUG] Table names:`, tableNames);
+  console.log(`[DEBUG] StartUnixTime: ${startUnixTime}, AdjustedEndTime: ${adjustedEndTime}`);
+
   const queryTasks = tableNames.map(async table => {
     const query = `
       SELECT 
-        toStartOfInterval(toDateTime64(dt, 6), toIntervalMillisecond(10000)) AS dt,
-        lat, lon, network, station,
+        dt_format, timestamp, lat, lon, network, station,
         maxIf(data, channel = 'BHE') AS BHE,
         maxIf(data, channel = 'BHN') AS BHN,
         maxIf(data, channel = 'BHZ') AS BHZ
       FROM ${SEISMIC_DB}.${table}
       WHERE 
-        dt BETWEEN toDateTime('${start_time}') AND toDateTime('${end_time}')
-      GROUP BY dt, lat, lon, network, station
+        dt_format BETWEEN ${startUnixTime} AND ${adjustedEndTime}
+      GROUP BY dt_format, timestamp, lat, lon, network, station
       HAVING countDistinct(channel) = 3
-      ORDER BY dt ASC;
+      ORDER BY timestamp ASC;
     `;
+    console.log(`[DEBUG] Query: ${query}`);
     try {
       const result = await clickhouse.query({ query, format: "JSON" });
       const json = await result.json();
@@ -61,7 +70,7 @@ async function getSeismicGraphData({ start_time, end_time, latitude, longitude }
 
   const graphData = { hnz: [], hnn: [], hne: [] };
   allData.forEach(item => {
-    const ts = item.dt;
+    const ts = item.timestamp;
     if (item.BHZ !== undefined) graphData.hnz.push({ timestamp: ts, value: item.BHZ });
     if (item.BHN !== undefined) graphData.hnn.push({ timestamp: ts, value: item.BHN });
     if (item.BHE !== undefined) graphData.hne.push({ timestamp: ts, value: item.BHE });
