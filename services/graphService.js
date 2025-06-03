@@ -37,9 +37,6 @@ async function getSeismicGraphData({ start_time, end_time, latitude, longitude }
   const thirtyMinutesLater = startUnixTime + 1800;
   const adjustedEndTime = Math.min(endUnixTime, thirtyMinutesLater);
 
-  console.log(`[DEBUG] Table names:`, tableNames);
-  console.log(`[DEBUG] StartUnixTime: ${startUnixTime}, AdjustedEndTime: ${adjustedEndTime}`);
-
   const queryTasks = tableNames.map(async table => {
     const query = `
       SELECT 
@@ -54,7 +51,6 @@ async function getSeismicGraphData({ start_time, end_time, latitude, longitude }
       HAVING countDistinct(channel) = 3
       ORDER BY timestamp ASC;
     `;
-    console.log(`[DEBUG] Query: ${query}`);
     try {
       const result = await clickhouse.query({ query, format: "JSON" });
       const json = await result.json();

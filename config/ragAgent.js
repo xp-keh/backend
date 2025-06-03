@@ -100,7 +100,6 @@ async function runAgent({ question, lat, lon, start_date, end_date }) {
         }
 
         const cityName = await getCityNameFromPostGIS(lon, lat);
-        console.log("[DEBUG] Nearest city:", cityName);
 
         const dbName = 'weather_dev_1';
         const unionSQL = tableNames.map(tableName => {
@@ -128,8 +127,6 @@ async function runAgent({ question, lat, lon, start_date, end_date }) {
             )
             LIMIT 100
         `;
-
-        console.log("[DEBUG] Final SQL to execute:", finalSQL);
 
         const result = await clickhouse.query({
             query: finalSQL,
