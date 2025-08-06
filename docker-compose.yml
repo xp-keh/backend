@@ -7,7 +7,7 @@ services:
       - "${PORT}:${PORT}"
     container_name: xp-keh
     networks:
-      nginx_manager_customnetwork:
+      nginx-manager_customnetwork:
         ipv4_address: 172.20.0.120
     environment:
       - PORT=${PORT}
@@ -23,8 +23,8 @@ services:
     ports:
       - "6382:6379"
     networks:
-      - nginx_manager_customnetwork
+      - nginx-manager_customnetwork
 
 networks:
-  nginx_manager_customnetwork:
+  nginx-manager_customnetwork:
     external: true
