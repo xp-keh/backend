@@ -26,5 +26,5 @@ services:
       - data-station-network
 
 networks:
-  data-station-network:
+  nginx_manager_customnetwork:
     external: true
