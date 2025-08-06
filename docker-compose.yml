@@ -7,8 +7,8 @@ services:
       - "${PORT}:${PORT}"
     container_name: xp-keh
     networks:
-      data-station-network:
-        ipv4_address: 172.20.14.91
+      nginx_manager_customnetwork:
+        ipv4_address: 172.20.0.120
     environment:
       - PORT=${PORT}
       - CLIENT_URL=${CLIENT_URL}
