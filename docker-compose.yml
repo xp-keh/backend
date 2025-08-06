@@ -23,7 +23,8 @@ services:
     ports:
       - "6382:6379"
     networks:
-      - nginx-manager_customnetwork
+      nginx-manager_customnetwork:
+        ipv4_address: 172.20.0.121
 
 networks:
   nginx-manager_customnetwork:
