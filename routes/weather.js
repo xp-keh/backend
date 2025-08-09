@@ -12,7 +12,7 @@ const clickhouse = createClient({
   database: process.env.CLICKHOUSE_DB_WEATHER,
 });
 
-const API_KEY = process.env.OPENWEATHER_API_KEY;
+const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY;
 const BASE_URL_h = "https://pro.openweathermap.org/data/2.5/forecast/hourly";
 const BASE_URL_d = "https://pro.openweathermap.org/data/2.5/forecast/daily";
 
@@ -169,7 +169,7 @@ router.get("/forecast_next_5_hours", async (req, res) => {
     const forecasts = await Promise.all(
       Object.entries(cityCoordinates).map(async ([city, { lat, lon }]) => {
         const response = await axios.get(BASE_URL_h, {
-          params: { lat, lon, appid: API_KEY, units: "metric" },
+          params: { lat, lon, appid: OPENWEATHER_API_KEY, units: "metric" },
         });
 
         return response.data.list.slice(0, 5).map((entry) => ({
@@ -196,7 +196,13 @@ router.get("/forecast_next_7_days", async (req, res) => {
     const forecasts = await Promise.all(
       Object.entries(cityCoordinates).map(async ([city, { lat, lon }]) => {
         const response = await axios.get(BASE_URL_d, {
-          params: { lat, lon, appid: API_KEY, units: "metric", cnt: 8 },
+          params: {
+            lat,
+            lon,
+            appid: OPENWEATHER_API_KEY,
+            units: "metric",
+            cnt: 8,
+          },
         });
 
         return response.data.list.slice(1, 7).map((entry) => ({
