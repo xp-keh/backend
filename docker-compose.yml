@@ -13,6 +13,7 @@ services:
       - PORT=${PORT}
       - CLIENT_URL=${CLIENT_URL}
       - JWT_SECRET=${JWT_SECRET}
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
     depends_on:
       - redis
     restart: always
