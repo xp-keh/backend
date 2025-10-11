@@ -14,6 +14,9 @@ services:
       - CLIENT_URL=${CLIENT_URL}
       - JWT_SECRET=${JWT_SECRET}
       - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
+      - MINIO_ENDPOINT=http://node1:9000 #TODO: put to env var
+      - MINIO_ACCESS_KEY=userRead
+      - MINIO_SECRET_KEY=dataReader
     depends_on:
       - redis
     restart: always

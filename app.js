@@ -15,6 +15,7 @@ var weatherRouter = require("./routes/weather");
 var seismicRouter = require("./routes/seismic");
 const helmet = require("helmet");
 const xss = require("xss-clean");
+var minioTestRouter = require("./routes/minioTest");
 
 var app = express();
 
@@ -45,6 +46,7 @@ app.use("/catalog", catalogRouter);
 app.use("/retrieve", retrieveRouter);
 app.use("/weather", weatherRouter);
 app.use("/seismic", seismicRouter);
+app.use("/minio-test", minioTestRouter);
 
 app.use(function (req, res, next) {
   next(createError(404));
