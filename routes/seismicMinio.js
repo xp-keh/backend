@@ -12,7 +12,7 @@ const minioClient = new Client({
 
 // --- READ ---
 router.get("/read", async (req, res) => {
-  const bucketName = "seismic_bucket";
+  const bucketName = "seismic";
   const objectName = req.query.file || "seismic_sample.json";
 
   try {
@@ -32,7 +32,7 @@ router.get("/read", async (req, res) => {
 
 // --- WRITE ---
 router.post("/write", async (req, res) => {
-  const bucketName = "seismic_bucket";
+  const bucketName = "seismic";
   const objectName = `seismic_${Date.now()}.json`;
   const payload = req.body || { info: "sample seismic write" };
 

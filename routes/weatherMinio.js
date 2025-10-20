@@ -12,7 +12,7 @@ const minioClient = new Client({
 
 // --- READ ---
 router.get("/read", async (req, res) => {
-  const bucketName = "weather_bucket";
+  const bucketName = "weather";
   const objectName = req.query.file || "weather_sample.json";
 
   try {
@@ -32,7 +32,7 @@ router.get("/read", async (req, res) => {
 
 // --- WRITE ---
 router.post("/write", async (req, res) => {
-  const bucketName = "weather_bucket";
+  const bucketName = "weather";
   const objectName = `weather_${Date.now()}.json`;
   const payload = req.body || { info: "sample weather write" };
 
