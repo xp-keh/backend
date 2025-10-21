@@ -25,6 +25,7 @@
     "minio": "^8.0.6",
     "moment-timezone": "^0.5.47",
     "morgan": "~1.9.1",
+    "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
     "pg": "^8.13.3",
     "redis": "^4.7.0",
