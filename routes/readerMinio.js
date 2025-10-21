@@ -3,7 +3,7 @@ const router = express.Router();
 const { Client } = require("minio");
 
 const minioClient = new Client({
-  endPoint: process.env.MINIO_ENDPOINT || "node1",
+  endPoint: process.env.MINIO_CONTAINER || "node1",
   port: parseInt(process.env.MINIO_PORT || "9000", 10),
   useSSL: false,
   accessKey: process.env.MINIO_READER_ACCESS_KEY,
