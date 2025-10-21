@@ -6,6 +6,8 @@ var path = require("path");
 var cookieParser = require("cookie-parser");
 var logger = require("morgan");
 var cors = require("cors");
+const helmet = require("helmet");
+const xss = require("xss-clean");
 
 var authRouter = require("./routes/auth");
 var indexRouter = require("./routes/index");
@@ -13,10 +15,9 @@ var catalogRouter = require("./routes/catalog");
 var retrieveRouter = require("./routes/retrieve");
 var weatherRouter = require("./routes/weather");
 var seismicRouter = require("./routes/seismic");
-const helmet = require("helmet");
-const xss = require("xss-clean");
-var minioTestRouter = require("./routes/minioTest");
-
+var weatherMinioRouter = require("./routes/weatherMinio");
+var seismicMinioRouter = require("./routes/seismicMinio");
+var readerMinioRouter = require("./routes/readerMinio");
 var app = express();
 
 app.use(helmet());
@@ -46,7 +47,9 @@ app.use("/catalog", catalogRouter);
 app.use("/retrieve", retrieveRouter);
 app.use("/weather", weatherRouter);
 app.use("/seismic", seismicRouter);
-app.use("/minio-test", minioTestRouter);
+app.use("/weather-minio", weatherMinioRouter);
+app.use("/seismic-minio", seismicMinioRouter);
+app.use("/reader-minio", readerMinioRouter);
 
 app.use(function (req, res, next) {
   next(createError(404));
