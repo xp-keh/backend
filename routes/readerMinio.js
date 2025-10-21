@@ -45,7 +45,7 @@ router.post("/write", async (req, res) => {
   try {
     const buffer = Buffer.from(JSON.stringify(payload), "utf-8");
     await minioClient.putObject(bucketName, objectName, buffer, buffer.length);
-    // jika berhasil, itu kesalahan konfigurasi policy
+
     res.status(500).json({
       message: `Unexpectedly succeeded ❌ — this user should not have write permission.`,
     });
