@@ -12,8 +12,8 @@ const minioClient = new Client({
 
 // --- READ ---
 router.get("/read", async (req, res) => {
-  const bucketName = req.query.bucket || "weather_bucket";
-  const objectName = req.query.file || "sample.json";
+  const bucketName = req.query.bucket;
+  const objectName = req.query.file;
 
   try {
     const stream = await minioClient.getObject(bucketName, objectName);
@@ -38,9 +38,9 @@ router.get("/read", async (req, res) => {
 
 // --- WRITE (expected to fail) ---
 router.post("/write", async (req, res) => {
-  const bucketName = req.query.bucket || "weather_bucket";
+  const bucketName = req.query.bucket;
   const objectName = `unauthorized_${Date.now()}.json`;
-  const payload = req.body || { info: "Unauthorized write attempt" };
+  const payload = req.body;
 
   try {
     const buffer = Buffer.from(JSON.stringify(payload), "utf-8");
