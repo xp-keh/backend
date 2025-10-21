@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
+const multer = require("multer");
 const { Client } = require("minio");
+const upload = multer(); 
 
 const minioClient = new Client({
   endPoint: process.env.MINIO_CONTAINER,
@@ -11,6 +13,20 @@ const minioClient = new Client({
 });
 
 const weatherBucket = process.env.MINIO_WEATHER_BUCKET_NAME
+
+// --- LIST ALL BUCKETS ---
+router.get("/buckets", async (req, res) => {
+  try {
+    const buckets = await minioClient.listBuckets();
+    res.json({
+      count: buckets.length,
+      buckets: buckets.map(b => ({ name: b.name, created: b.creationDate })),
+    });
+  } catch (err) {
+    console.error("Error listing buckets:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // --- GET LIST ---
 router.get("/list", (req, res) => {
@@ -49,7 +65,8 @@ router.get("/read", async (req, res) => {
 
 // --- WRITE ---
 router.post("/write", async (req, res) => {
-  const objectName = `weather_${Date.now()}.json`;
+  const filename = req.body.filename;
+  const objectName = `${filename}.json`;
   const payload = req.body;
 
   try {
@@ -58,6 +75,49 @@ router.post("/write", async (req, res) => {
     res.json({ message: `Write success to ${weatherBucket}`, object: objectName });
   } catch (err) {
     console.error("Write error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- UPLOAD FILE ---
+router.post("/upload", upload.single("file"), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  const folder = req.body.path || "";
+  const normalizedFolder = folder && !folder.endsWith("/") ? folder + "/" : folder;
+  const objectName = `${normalizedFolder}${req.file.originalname}`;
+
+  try {
+    await minioClient.putObject(weatherBucket, objectName, req.file.buffer, req.file.size);
+    res.json({ message: `File uploaded successfully`, object: objectName });
+  } catch (err) {
+    console.error("Upload error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- DOWNLOAD FILE ---
+router.get("/download", async (req, res) => {
+  const objectName = req.query.file;
+
+  if (!objectName) {
+    return res.status(400).json({ error: "File name is required" });
+  }
+
+  try {
+    const stream = await minioClient.getObject(weatherBucket, objectName);
+
+    res.setHeader("Content-Disposition", `attachment; filename="${objectName}"`);
+    res.setHeader("Content-Type", "application/octet-stream");
+
+    stream.pipe(res);
+    stream.on("error", (err) => {
+      console.error("Stream error:", err);
+      res.status(500).end("Error downloading file");
+    });
+  } catch (err) {
+    console.error("Download error:", err);
     res.status(500).json({ error: err.message });
   }
 });

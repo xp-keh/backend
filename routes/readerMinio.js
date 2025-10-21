@@ -10,6 +10,37 @@ const minioClient = new Client({
   secretKey: process.env.MINIO_READER_SECRET_KEY,
 });
 
+// --- LIST ALL BUCKETS ---
+router.get("/buckets", async (req, res) => {
+  try {
+    const buckets = await minioClient.listBuckets();
+    res.json({
+      count: buckets.length,
+      buckets: buckets.map(b => ({ name: b.name, created: b.creationDate })),
+    });
+  } catch (err) {
+    console.error("Error listing buckets:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- GET LIST ---
+router.get("/list", (req, res) => {
+  const bucketName = req.query.bucket;
+  const objectsList = [];
+
+  const objectsStream = minioClient.listObjectsV2(bucketName, "", true); // true = recursive
+
+  objectsStream.on("data", (obj) => objectsList.push(obj.name));
+  objectsStream.on("error", (err) => {
+    console.error("List error:", err);
+    res.status(500).json({ error: err.message });
+  });
+  objectsStream.on("end", () => {
+    res.json({ bucket: bucketName, files: objectsList });
+  });
+});
+
 // --- READ ---
 router.get("/read", async (req, res) => {
   const bucketName = req.query.bucket;
