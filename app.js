@@ -15,9 +15,11 @@ var catalogRouter = require("./routes/catalog");
 var retrieveRouter = require("./routes/retrieve");
 var weatherRouter = require("./routes/weather");
 var seismicRouter = require("./routes/seismic");
-var weatherMinioRouter = require("./routes/weatherMinio");
-var seismicMinioRouter = require("./routes/seismicMinio");
-var readerMinioRouter = require("./routes/readerMinio");
+// Temporarily disabled for local development - use unified file explorer instead
+// var weatherMinioRouter = require("./routes/weatherMinio");
+// var seismicMinioRouter = require("./routes/seismicMinio");
+// var readerMinioRouter = require("./routes/readerMinio");
+var fileExplorerRouter = require("./routes/fileExplorer");
 var app = express();
 
 app.use(helmet());
@@ -47,9 +49,11 @@ app.use("/catalog", catalogRouter);
 app.use("/retrieve", retrieveRouter);
 app.use("/weather", weatherRouter);
 app.use("/seismic", seismicRouter);
-app.use("/weather-minio", weatherMinioRouter);
-app.use("/seismic-minio", seismicMinioRouter);
-app.use("/reader-minio", readerMinioRouter);
+// Temporarily disabled for local development - use unified file explorer instead
+// app.use("/weather-minio", weatherMinioRouter);
+// app.use("/seismic-minio", seismicMinioRouter);
+// app.use("/reader-minio", readerMinioRouter);
+app.use("/files", fileExplorerRouter);
 
 app.use(function (req, res, next) {
   next(createError(404));
