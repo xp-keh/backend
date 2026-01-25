@@ -55,7 +55,7 @@ async function fetchWeatherData(type, city) {
     const tableListQuery = `
             SELECT name 
             FROM system.tables 
-            WHERE database = 'weather_dev_1' 
+            WHERE database = 'weather' 
             AND name >= '${startTable}' 
             AND name <= '${endTable}'
             ORDER BY name ASC;
@@ -85,7 +85,7 @@ async function fetchWeatherData(type, city) {
               .map(
                 (table) => `
                     SELECT location, temp, dt
-                    FROM weather_dev_1.${table}
+                    FROM weather.${table}
                     WHERE dt >= ${startTime.unix()}
                 `
               )
@@ -103,7 +103,7 @@ async function fetchWeatherData(type, city) {
               .map(
                 (table) => `
                     SELECT location, humidity, dt
-                    FROM weather_dev_1.${table}
+                    FROM weather.${table}
                     WHERE dt >= ${startTime.unix()}
                 `
               )
@@ -123,7 +123,7 @@ async function fetchWeatherData(type, city) {
               .map(
                 (table) => `
                     SELECT location, wind_speed, wind_deg, wind_gust, dt
-                    FROM weather_dev_1.${table}
+                    FROM weather.${table}
                     WHERE dt >= ${startTime.unix()}
                 `
               )
@@ -132,21 +132,6 @@ async function fetchWeatherData(type, city) {
         GROUP BY location, dt
         ORDER BY dt ASC;
       `;
-      //   `
-      //   SELECT location, wind_speed, wind_deg, wind_gust, dt
-      //   FROM (
-      //       ${tableNames
-      //         .map(
-      //           (table) => `
-      //             SELECT location, wind_speed, wind_deg, wind_gust, dt
-      //             FROM weather_dev_1.${table}
-      //             WHERE location = '${city}'
-      //           `
-      //         )
-      //         .join(" UNION ALL ")}
-      //   )
-      //   ORDER BY dt ASC;
-      // `;
     } else {
       throw new Error("Invalid data type specified");
     }

@@ -23,7 +23,7 @@ async function fetchSeismicData(station, type) {
     const tableListQuery = `
             SELECT name 
             FROM system.tables 
-            WHERE database = 'seismic_dev_1' 
+            WHERE database = 'seismic' 
             AND name >= '${startTable}' 
             AND name <= '${endTable}'
             ORDER BY name ASC;
@@ -50,7 +50,7 @@ async function fetchSeismicData(station, type) {
               .map(
                 (table) => `
                     SELECT dt, station, data
-                    FROM seismic_dev_1.${table}
+                    FROM seismic.${table}
                     WHERE channel='${type}' AND station='${station}'
 
                 `

@@ -101,7 +101,7 @@ async function runAgent({ question, lat, lon, start_date, end_date }) {
 
         const cityName = await getCityNameFromPostGIS(lon, lat);
 
-        const dbName = 'weather_dev_1';
+        const dbName = 'weather';
         const unionSQL = tableNames.map(tableName => {
             return `
                 SELECT 
